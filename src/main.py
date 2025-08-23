@@ -16,7 +16,7 @@ class TTCClient:
         self.session = requests.Session()
         self.session.headers.update(self.headers)
 
-    def _get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def _get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         url = f"{self.base_url}{endpoint}"
 
         if params:
@@ -27,3 +27,21 @@ class TTCClient:
         response.raise_for_status()
         return response.json()
 
+    def stops(self) -> List[Dict[str, Any]]:
+        return self._get("/stops")
+
+    def stop(self, stop_id: str) -> List[Dict[str, Any]]:
+        return self._get(f"/stops/1:{stop_id}")
+
+    def routes(self) -> List[Dict[str, Any]]:
+        return self._get("/routes", {"modes": "BUS"})
+
+
+if __name__ == "__main__":
+    # Just exploring the data
+    client = TTCClient()
+    stops = client.stops()
+    st = set()
+    for stop in stops:
+        st.add(stop.get('vehicleMode'))
+    print(st)
