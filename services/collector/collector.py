@@ -23,6 +23,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
+import requests
+
 import config
 from ttc_client import TTCClient
 
@@ -70,6 +72,9 @@ class Collector:
         self.route_ids: List[str] = tracked.get("route_ids") or tracked.get("routes", [])
         self.arrivals = JsonlWriter(config.DATA_DIR / "arrival-times")
         self.positions = JsonlWriter(config.DATA_DIR / "positions")
+        # (route_id, forward) pairs that 500 — a route with no pattern in that direction.
+        # Learned at runtime and skipped thereafter, so we stop wasting a request per cycle.
+        self._skip_positions: set = set()
         self._running = True
         signal.signal(signal.SIGINT, self._stop)
         signal.signal(signal.SIGTERM, self._stop)
@@ -101,6 +106,8 @@ class Collector:
         directions = (True, False) if config.POSITIONS_BOTH_DIRECTIONS else (True,)
         for route_id in self.route_ids:
             for forward in directions:
+                if (route_id, forward) in self._skip_positions:
+                    continue  # known to have no pattern this direction; no request, no sleep
                 try:
                     payload = self.client.positions(route_id, forward=forward)
                     self.positions.write({
@@ -108,7 +115,15 @@ class Collector:
                         "route_id": route_id, "forward": forward, "payload": payload,
                     })
                     ok += 1
+                except requests.exceptions.HTTPError as e:
+                    if e.response is not None and e.response.status_code == 500:
+                        # Route has no pattern in this direction — permanent, so stop retrying it.
+                        self._skip_positions.add((route_id, forward))
+                        print(f"  ~ positions route {route_id} fwd={forward}: no pattern (500), skipping henceforth", flush=True)
+                    else:
+                        print(f"  ! positions route {route_id} fwd={forward}: {e}", flush=True)
                 except Exception as e:
+                    # Transient (timeout, connection) — log and retry next cycle, don't skip.
                     print(f"  ! positions route {route_id} fwd={forward}: {e}", flush=True)
                 if not self._running:
                     return ok
@@ -131,7 +146,8 @@ class Collector:
                 next_positions = time.monotonic() + config.POSITIONS_POLL_INTERVAL_SECONDS
 
             elapsed = time.monotonic() - cycle_start
-            print(f"[{utc_now_iso()}] arrivals={n_arr} positions={n_pos} cycle={elapsed:.1f}s", flush=True)
+            print(f"[{utc_now_iso()}] arrivals={n_arr} positions={n_pos} "
+                  f"skip={len(self._skip_positions)} cycle={elapsed:.1f}s", flush=True)
 
             # Adaptive sleep: hold the arrival cadence; if a cycle ran long, continue immediately.
             sleep_for = config.POLL_INTERVAL_SECONDS - elapsed
