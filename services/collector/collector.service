@@ -1,0 +1,23 @@
+# systemd unit template for the TTC collector on atlas.
+# Adjust User and the two paths, then:
+#   sudo cp collector.service /etc/systemd/system/ttc-collector.service
+#   sudo systemctl daemon-reload && sudo systemctl enable --now ttc-collector
+#   journalctl -u ttc-collector -f       # watch logs
+[Unit]
+Description=TTC bus-data collector
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=CHANGEME
+WorkingDirectory=/home/CHANGEME/tbilisi-bus-stats/services/collector
+ExecStart=/home/CHANGEME/tbilisi-bus-stats/services/collector/.venv/bin/python collector.py
+Restart=always
+RestartSec=10
+# Keep going across the daily file rollover and transient API blips.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
