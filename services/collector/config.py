@@ -1,4 +1,4 @@
-"""Collector configuration. All values overridable via environment variables / .env."""
+"""Collector-ის კონფიგურაცია/ცვლადები"""
 import os
 from pathlib import Path
 
@@ -8,7 +8,7 @@ try:
 except ImportError:
     pass
 
-# Repo root = two levels up from this file (services/collector/ -> repo root).
+# რეპოზიტორიის root-ი ორი დონით უკანაა (services/collector/ = root).
 REPO_ROOT = Path(__file__).resolve().parents[2]
 COLLECTOR_DIR = Path(__file__).resolve().parent
 
@@ -21,24 +21,23 @@ def _float(name: str, default: float) -> float:
     return float(os.getenv(name, default))
 
 
-# How often to poll arrival-times for every tracked stop (the primary ML signal).
+# რამდენად ხშირად უნდა განახლდეს ჩასვლის დროები თითოეული გაჩერებისთვის.
 POLL_INTERVAL_SECONDS = _int("POLL_INTERVAL_SECONDS", 30)
 
-# How often to poll vehicle positions for the tracked routes (auxiliary; can be slower
-# since it's used to confirm/disambiguate arrivals, not as the core ETA series).
+# რამდენად ხშირად უნდა განახლდეს ავტობუსების მიმდინარე პოზიციები
 POSITIONS_POLL_INTERVAL_SECONDS = _int("POSITIONS_POLL_INTERVAL_SECONDS", 60)
 
-# Poll positions for both route directions (True) or just the forward direction (False).
+# უნდა ჩაწეროს თუ არა ორივე მიმართულების პოზიციები.
 POSITIONS_BOTH_DIRECTIONS = os.getenv("POSITIONS_BOTH_DIRECTIONS", "true").lower() == "true"
 
-# Polite pause between individual HTTP requests within a cycle, to avoid hammering the API.
+# ციკლში იტერაციისას HTTP requests-ებს შორის ინტერვალები, რომ API არ გადაიტვირთოს.
 INTER_REQUEST_DELAY = _float("INTER_REQUEST_DELAY", 0.25)
 
-# Where raw JSONL snapshots are written (gitignored). One subdir per stream, one file per day.
+# JSONL-ის ფორმატით (gitignore-შია). ფაილები დღეებადაა გაყოფილი.
 DATA_DIR = Path(os.getenv("DATA_DIR", REPO_ROOT / "data" / "raw"))
 
-# The set of stops/routes to track, produced by select_stops.py.
+# რომელი გაჩერებები უნდა განახლდეს, აგენერირებს select_stops.py.
 TRACKED_STOPS_FILE = Path(os.getenv("TRACKED_STOPS_FILE", COLLECTOR_DIR / "tracked_stops.json"))
 
-# How many stops the auto-selector should pick.
+# რამდენი გაჩერება უნდა შეირჩიოს ავტომატური სელექტორის მიერ.
 TARGET_STOP_COUNT = _int("TARGET_STOP_COUNT", 30)
