@@ -79,6 +79,7 @@ class Collector:
         self._running = False
 
     def poll_arrivals(self) -> int:
+        """გაჩერებებზე მოსალოდნელი ავტობუსების წამოღება, შესაბამის ერორებთან გამკლავება."""
         ok = 0
         for stop in self.stops:
             sid = stop["id"]
@@ -97,8 +98,10 @@ class Collector:
         return ok
 
     def poll_positions(self) -> int:
+        """მარშრუტების პოზიციების წამოღება, შესაბამის ერორებთან გამკლავება."""
         ok = 0
         self._positions_cycles += 1
+        # თავიდან ვცდილობთ ძველი გამოტოვებული პოზიციების გადამოწმებას
         if (config.POSITIONS_SKIP_RETRY_CYCLES
                 and self._positions_cycles % config.POSITIONS_SKIP_RETRY_CYCLES == 0
                 and self._skip_positions):
@@ -108,7 +111,7 @@ class Collector:
         for route_id in self.route_ids:
             for forward in directions:
                 if (route_id, forward) in self._skip_positions:
-                    continue  # known to have no pattern this direction; no request, no sleep
+                    continue  # თუ ისეთი წყვილია რომელზეც ვიცით რომ არ იმუშავებს, გამოვტოვოთ
                 try:
                     payload = self.client.positions(route_id, forward=forward)
                     self.positions.write({
@@ -118,13 +121,13 @@ class Collector:
                     ok += 1
                 except requests.exceptions.HTTPError as e:
                     if e.response is not None and e.response.status_code == 500:
-                        # Route has no pattern in this direction — permanent, so stop retrying it.
+                        # ჩავინიშნოთ წყვილები რომლებიც დაერორდა 500-ით
                         self._skip_positions.add((route_id, forward))
                         print(f"  ~ positions route {route_id} fwd={forward}: no pattern (500), skipping henceforth", flush=True)
                     else:
                         print(f"  ! positions route {route_id} fwd={forward}: {e}", flush=True)
                 except Exception as e:
-                    # Transient (timeout, connection) — log and retry next cycle, don't skip.
+                    # ჩავინიშოთ წყვილები რომლებიც დაერორდა ნებისმიერი ერორით
                     print(f"  ! positions route {route_id} fwd={forward}: {e}", flush=True)
                 if not self._running:
                     return ok
@@ -132,6 +135,7 @@ class Collector:
         return ok
 
     def run(self) -> None:
+        """მთავარი ციკლი, რომელიც პერიოდულად იძახებს მონაცემების წამოღების ფუნქციებს და ინახავს მათ ფაილებში."""
         print(f"Collector started: {len(self.stops)} stops, {len(self.route_ids)} routes.", flush=True)
         print(f"  arrival interval={config.POLL_INTERVAL_SECONDS}s  "
               f"positions interval={config.POSITIONS_POLL_INTERVAL_SECONDS}s  "
@@ -146,14 +150,17 @@ class Collector:
                 n_pos = self.poll_positions()
                 next_positions = time.monotonic() + config.POSITIONS_POLL_INTERVAL_SECONDS
 
-            elapsed = time.monotonic() - cycle_start
+            # თითოეული ინტერვალი მკაცრად მოიცავს 30 წამს, მაგრამ თუ რომელიმე ფუნქციამ გაიწელა,
+            # შემდეგი ციკლი არ დაიწყება მანამ, სანამ მიმდინარე ციკლი არ დასრულდება.
+            # ეს იცავს API-ს გადატვირთვისგან, რაც შეიძლება მოხდეს ციკლების ერთმანეთთან დამთხვევის შემთხვევაში.
+            elapsed = time.monotonic() - cycle_start # მოცემული ციკლის მუშაობას რამდენი ხანი დასჭირდა
             print(f"[{utc_now_iso()}] arrivals={n_arr} positions={n_pos} "
                   f"skip={len(self._skip_positions)} cycle={elapsed:.1f}s", flush=True)
 
-            # Adaptive sleep: hold the arrival cadence; if a cycle ran long, continue immediately.
-            sleep_for = config.POLL_INTERVAL_SECONDS - elapsed
+            sleep_for = config.POLL_INTERVAL_SECONDS - elapsed # რამდენი ხანია "დარჩენილი" ამ ციკლში
             while sleep_for > 0 and self._running:
-                time.sleep(min(sleep_for, 1.0))  # wake often so shutdown is responsive
+                # sleep ეშვება 1 წამზე ნაკლები ინტერვალებით, რომ უფრო სწრაფად რეაგირებდეს პროცესის შეჩერებაზე
+                time.sleep(min(sleep_for, 1.0))
                 sleep_for -= 1.0
 
         self.arrivals.close()
