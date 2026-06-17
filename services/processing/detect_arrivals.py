@@ -28,6 +28,11 @@ RESET_JUMP_MIN = 3
 MAX_GAP_SECONDS = 180
 # თუ ავტობუსი არ მივიდა 2 წუთში, მაშინ ვთვლით, რომ ეს ავტობუსი ვერ მოვიდა და არ ვქმნით arrival ჩანაწერს.
 ARRIVAL_MAX_REMAINING_MIN = 2
+# თუ უკუთვლა იკლებს იმაზე უფრო სწრაფად, ვიდრე გასული დრო უშვებს (ფიზიკურად შეუძლებელია, მაგ. 24→0
+# ერთ ნაბიჯში), ესეც სხვა ავტობუსია ან API-ის ხარვეზი — ვწყვეტთ მიმდინარე მიახლოებას.
+MAX_DROP_TOLERANCE_MIN = 2
+# ნამდვილ მოსვლას მინიმუმ ორი ჩანაწერი სჭირდება; ცალკეული 0 ხშირად API-ის ხარვეზია.
+MIN_READINGS_FOR_ARRIVAL = 2
 
 Reading = Tuple[datetime, int, Optional[int]]  # (timestamp, realtime_minutes, scheduled_minutes)
 
@@ -63,42 +68,55 @@ def read_lanes(paths: Iterable[Path]) -> Dict[Tuple[str, str, str], Dict[str, An
     return lanes
 
 
-def segment_arrivals(readings: List[Reading]) -> List[Dict[str, Any]]:
-    """თითოეული lane-ის უკუთვლების სერიას ვამოწმებთ და ვქმნით მოსვლის (arrival) ჩანაწერებს.
+def iter_approaches(readings: List[Reading]):
+    """თითო lane-ის უკუთვლებს ჭრის ცალკეულ მიახლოებებად და აბრუნებს მხოლოდ ვალიდურ
+    მოსვლებს, წყვილად (approach_readings, arrival_ts). საერთო ლოგიკაა arrival detection-ისა
+    და feature engineering-ისთვის, რომ ორივემ ერთნაირად დაჭრას მონაცემები.
     """
     readings.sort(key=lambda r: r[0])
-    arrivals: List[Dict[str, Any]] = []
+
+    def arrival_of(approach: List[Reading]) -> Optional[datetime]:
+        if len(approach) < MIN_READINGS_FOR_ARRIVAL:
+            return None  # ერთჯერადი ჩანაწერი — სავარაუდოდ ხარვეზი.
+        if min(r[1] for r in approach) > ARRIVAL_MAX_REMAINING_MIN:
+            return None  # ვერ მიუახლოვდა 0-ს — მოსვლად არ ჩაითვლება.
+        last_ts, last_min, _ = approach[-1]
+        return last_ts + timedelta(minutes=last_min)
+
     approach: List[Reading] = []
-
-    def close(approach: List[Reading]) -> None:
-        if not approach:
-            return
-        last_ts, last_min, last_sched = approach[-1]
-        min_remaining = min(r[1] for r in approach)
-        if min_remaining > ARRIVAL_MAX_REMAINING_MIN:
-            return  # ავტობუსი ვერ მოვიდა 2 წუთში, არ ვქმნით arrival ჩანაწერს.
-        arrival_ts = last_ts + timedelta(minutes=last_min)
-        arrivals.append({
-            "arrival_ts": arrival_ts.isoformat(),
-            "delay_min": last_sched,
-            "n_readings": len(approach),
-            "min_remaining_min": min_remaining,
-            "first_seen_min": approach[0][1],
-            "first_seen_ts": approach[0][0].isoformat(),
-        })
-
     prev: Optional[Reading] = None
     for r in readings:
         if prev is not None:
             ts, minutes, _ = r
             pts, pmin, _ = prev
             gap = (ts - pts).total_seconds()
-            if gap > MAX_GAP_SECONDS or minutes > pmin + RESET_JUMP_MIN:
-                close(approach)
+            # ფიზიკურად შეუძლებელი ვარდნა: უკუთვლა გასულ დროზე მეტად დაიკლებს.
+            impossible_drop = (pmin - minutes) > gap / 60.0 + MAX_DROP_TOLERANCE_MIN
+            if gap > MAX_GAP_SECONDS or minutes > pmin + RESET_JUMP_MIN or impossible_drop:
+                arr = arrival_of(approach)
+                if arr is not None:
+                    yield approach, arr
                 approach = []
         approach.append(r)
         prev = r
-    close(approach)
+    arr = arrival_of(approach)
+    if arr is not None:
+        yield approach, arr
+
+
+def segment_arrivals(readings: List[Reading]) -> List[Dict[str, Any]]:
+    """თითოეული lane-ის უკუთვლების სერიას ვამოწმებთ და ვქმნით მოსვლის (arrival) ჩანაწერებს."""
+    arrivals: List[Dict[str, Any]] = []
+    for approach, arrival_ts in iter_approaches(readings):
+        _, _, last_sched = approach[-1]
+        arrivals.append({
+            "arrival_ts": arrival_ts.isoformat(),
+            "delay_min": last_sched,
+            "n_readings": len(approach),
+            "min_remaining_min": min(r[1] for r in approach),
+            "first_seen_min": approach[0][1],
+            "first_seen_ts": approach[0][0].isoformat(),
+        })
     return arrivals
 
 
