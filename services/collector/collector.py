@@ -1,19 +1,12 @@
-"""TTC data collector — Phase 1.
+"""TTC მონაცემების შეგროვება — ფაზა 1.
 
-Polls the TTC API on a fixed cadence and appends every raw snapshot to daily JSONL files
-under data/raw/. Two independent streams:
+გროვდება:
+  data/raw/arrival-times/YYYY-MM-DD.jsonl   თითო ჩანაწერი თითო გაჩერებისთვის
+  data/raw/positions/YYYY-MM-DD.jsonl       თითო ჩანაწერი თითო მარშრუტისთვის
 
-  data/raw/arrival-times/YYYY-MM-DD.jsonl   one record per stop per poll (primary signal)
-  data/raw/positions/YYYY-MM-DD.jsonl       one record per route/direction per poll (auxiliary)
-
-Design choice: we store the FULL raw payload plus a thin envelope (timestamp, endpoint, id),
-not a hand-picked subset of fields. Collection is the irreversible step — a snapshot's moment
-never comes back — so we lose nothing here and defer field extraction/normalization to the
-Phase 2 ETL, which is cheap and re-runnable.
-
-Run:
-    python collector.py
-Stop cleanly with Ctrl-C (or SIGTERM under systemd).
+ინახება მთლიანი payload-ი, ასევე რამდენიმე დამატებითი მონაცემი (timestamp, endpoint, id).
+აქედან არაფერი არ იშლება ან არ ხდება ტრანსოფრმაცია, ეს უკანასკნელი ნაწილი მეორე ფაზის ETL-ისთვისაა,
+რომელიც ხელახლა გაშვებადია.
 """
 import json
 import signal
@@ -29,6 +22,7 @@ import config
 from ttc_client import TTCClient
 
 
+# დამხმარე ფუნქციები, რომ timestamp-ები ყოველთვის ერთნაირი ფორმატით იყოს ჩაწერილი (ISO 8601 UTC).
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -38,7 +32,7 @@ def utc_date() -> str:
 
 
 class JsonlWriter:
-    """Append-only writer that rotates to a new file each UTC day and flushes every line."""
+    """ფუნქცია, რომელიც ყოველი დღისთვის ახალ ფაილს ქმნის და მონაცემებს აგროვებს."""
 
     def __init__(self, stream_dir: Path):
         self.stream_dir = stream_dir
@@ -54,8 +48,7 @@ class JsonlWriter:
             self._fh = (self.stream_dir / f"{today}.jsonl").open("a", encoding="utf-8")
             self._date = today
         self._fh.write(json.dumps(record, ensure_ascii=False) + "\n")
-        self._fh.flush()  # durability: a crash loses at most the in-flight line
-
+        self._fh.flush()  # წამოღებისთანავე ჩაწეროს ფაილში, რომ არ დაიკარგოს მონაცემი პროცესის მოულოდნელი შეჩერებისას
     def close(self) -> None:
         if self._fh:
             self._fh.close()
@@ -64,23 +57,25 @@ class JsonlWriter:
 
 class Collector:
     def __init__(self):
+        # API client-ის ინიციალიზაცია
         self.client = TTCClient.from_env()
         tracked = json.loads(config.TRACKED_STOPS_FILE.read_text(encoding="utf-8"))
         self.stops: List[Dict[str, Any]] = tracked["stops"]
-        # tracked_stops.json lists route SHORT-NAMES; positions needs route IDs. If the file
-        # carries ids use them, else fall back to short-names (validated against live API).
+        # ზოგადად უნდა იყოს "route_ids", მაგრამ თუ არ გვაქვს, მარშრუტის სახელი გამოვიყენოთ.
         self.route_ids: List[str] = tracked.get("route_ids") or tracked.get("routes", [])
         self.arrivals = JsonlWriter(config.DATA_DIR / "arrival-times")
         self.positions = JsonlWriter(config.DATA_DIR / "positions")
-        # (route_id, forward) pairs that 500 — a route with no pattern in that direction.
-        # Learned at runtime and skipped thereafter, so we stop wasting a request per cycle.
         self._skip_positions: set = set()
+        # 500-იანი ერორი სერვერისაც შეიძლება იყოს და ვალიდური მარშრუტის არარსებობაც. ტყუილად რომ არ გავაგზავნოთ
+        # რექუესთი, ასეთი მარშრუტი ერთჯერადად გამოიტოვება, მაგრამ ვცდილობთ პერიოდულად მაინც დავუბრუნდეთ,
+        # რომ თუ სერვერის პრობლემა იყო, მოგვიანებით მაინც მოვძებნოს.
+        self._positions_cycles = 0
         self._running = True
         signal.signal(signal.SIGINT, self._stop)
         signal.signal(signal.SIGTERM, self._stop)
 
     def _stop(self, *_):
-        print("\nShutting down...", flush=True)
+        print("\nპროცესი ჩერდება...", flush=True)
         self._running = False
 
     def poll_arrivals(self) -> int:
@@ -103,6 +98,12 @@ class Collector:
 
     def poll_positions(self) -> int:
         ok = 0
+        self._positions_cycles += 1
+        if (config.POSITIONS_SKIP_RETRY_CYCLES
+                and self._positions_cycles % config.POSITIONS_SKIP_RETRY_CYCLES == 0
+                and self._skip_positions):
+            print(f"  მიმდინარეობს ~ {len(self._skip_positions)} გამოტოვებული პოზიციების თავიდან ცდა", flush=True)
+            self._skip_positions.clear()
         directions = (True, False) if config.POSITIONS_BOTH_DIRECTIONS else (True,)
         for route_id in self.route_ids:
             for forward in directions:
