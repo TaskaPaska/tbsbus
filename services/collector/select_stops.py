@@ -1,12 +1,9 @@
-"""Auto-select the ~N busiest bus stops to track, by route density.
+"""ირჩევს რომელ გაჩერებებს უნდა დავაკვირდეთ.
 
-"Busiest" = served by the most distinct bus routes. We build the stop->routes mapping
-by listing every BUS route and its stops (both directions), then rank stops by how many
-routes pass through them. Output (tracked_stops.json) drives the collector: the selected
-stops are polled for arrival-times, and the routes serving them are polled for positions.
-
-Run once (re-run to refresh the selection):
-    python select_stops.py
+ეშვება ერთჯერადად, თავიდან, სანამ მონაცემების შეგროვება დაიწყება. ამოირჩევა რომელი დაახლ. 30 გაჩერების შესახებ
+უნდა შევაგროვოთ მონაცემები.
+გაჩერება ამოირჩევა იმის მიხედვით, თუ რამდენად დაკავებული ("Busiest") არის იგი. რაც უფრო მეტი მარშრუტი/ავტობუსი გადის
+გაჩერებაზე, მით უფრო მაღალია მისი პრიორიტეტი. ამოირჩევა მხოლოდ ავტობუსის გაჩერებები.
 """
 import json
 import time
@@ -17,13 +14,13 @@ from ttc_client import TTCClient
 
 
 def bare_id(raw: Any) -> str:
-    """Stop/route ids come back as e.g. '1:123'; the path builders re-add the '1:' prefix."""
+    """გაჩერების id მოდის მოც. ფორმატში '1:123'. ეს ფუნქცია ამატებს სწორედ ამ '1:' პრეფიქსს."""
     s = str(raw)
     return s.split(":", 1)[1] if ":" in s else s
 
 
 def build_stop_route_density(client: TTCClient):
-    """Return (stop_id -> set of route_ids serving it, route_id -> short name)."""
+    """აბრუნებს (stop_id -> route_ids-ები, რომლებიც მოც. გაჩერებაზე გადის, route_id -> მოკლე დასახელება)."""
     routes = client.routes(modes="BUS")
     print(f"Found {len(routes)} bus routes; listing stops per route...")
 
@@ -36,7 +33,7 @@ def build_stop_route_density(client: TTCClient):
         for forward in (True, False):
             try:
                 stops = client.route_stops(route_id, forward=forward)
-            except Exception as e:  # one bad route shouldn't abort the whole scan
+            except Exception as e:  # ერთმა არამართებულმა მარშრუტმა არ უნდა ჩაშალოს მთელი პროცესი, უბრალოდ გამოვტოვოთ
                 print(f"  ! route {short} forward={forward}: {e}")
                 continue
             for stop in stops or []:
@@ -51,14 +48,14 @@ def build_stop_route_density(client: TTCClient):
 def main() -> None:
     client = TTCClient.from_env()
 
-    # Full stop catalogue, for names/coords. Keep only buses.
+    # მთლიანი გაჩერებების ჩამონათვალი, ჩვენთვის რელევანტურია მხოლოდ ავტობუსის გაჩერებები.
     all_stops = client.stops()
     by_id = {bare_id(s.get("id")): s for s in all_stops if s.get("vehicleMode") == "BUS"}
     print(f"{len(by_id)} BUS stops in catalogue.")
 
     stop_route_ids, route_short = build_stop_route_density(client)
 
-    # Rank known bus stops by route density.
+    # ჩვენთვის ნაცნობი ავტობუსის გაჩერებების დალაგება მათი "დაკავებულობის" მიხედვით.
     ranked = sorted(
         ((sid, rids) for sid, rids in stop_route_ids.items() if sid in by_id),
         key=lambda kv: len(kv[1]),
