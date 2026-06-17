@@ -1,34 +1,18 @@
-"""Arrival detection — Phase 2 ETL.
+"""მოსვლის დაფიქსირება, ფაზა 2, ETL-ი.
 
-Turns the raw arrival-times snapshot stream into discrete *arrival events*: the moment a
-specific bus actually reached a stop. This is the research core — every downstream metric
-(headways, frequency, schedule adherence) is derived from these events.
-
-How it works
-------------
-The collector polls every stop ~every 30s. Each snapshot lists the upcoming buses with a
-live countdown ``realtimeArrivalMinutes``. A single bus shows up across many consecutive
-snapshots with a *monotonically decreasing* countdown:
+collector-ს მოაქვს თითოეული გაჩერებისთვის ჩასვლის დროები ყოველ 30 წამში.
+თითოეყლუი snapshot-ი მომავალ ავტობუსებს აჩვენებს მოსვლის დროის *მინიმალურ* დარჩენილი წუთებს,
+ანუ უკანთვლა/countdown-ი ხდება ``realtimeArrivalMinutes``-ის საშუალებით. როდესაც ავტობუსი მიაღწევს გაჩერებას,
+countdown-ი 0-მდე მიდის და შემდეგ ავტობუსი აღარ ჩანს snapshot-ებში.
 
     09:00  route 305  pat 0:01  rt=4
     09:01  route 305  pat 0:01  rt=3
     09:02  route 305  pat 0:01  rt=1
     09:03  route 305  pat 0:01  rt=0
-    09:04  (gone)                        <- the bus arrived around 09:03-09:04
+    09:04  (აღარაა)                        <- ავტობუსი მივიდა დაახლ. 09:03-09:04 დროის დიაპაზონში.
 
-We group readings by a "lane" = (stop_id, shortName, patternSuffix), order them by time, and
-segment them into individual vehicle approaches. A segment ends — and is recorded as an
-arrival — when the countdown reaches ~0 and then disappears, or when it jumps back UP
-(the next vehicle of the same route/direction has appeared). The arrival timestamp is
-extrapolated: last_seen_ts + last_remaining_minutes.
-
-Only ``realtime`` readings are used: a scheduled-only entry is a timetable guess, not a
-tracked vehicle, so it can't anchor an arrival time.
-
-Usage
------
-    python detect_arrivals.py data/raw/arrival-times/2026-06-13.jsonl
-    python detect_arrivals.py data/raw/arrival-times/*.jsonl -o data/processed/arrivals.jsonl
+ვაკვირდებით თითოეულ უკუთვლას, როდესაც ავტობუსი მიაღწევს გაჩერებას, ანუ 0-მდე დავა მაჩვენებელი,
+ვინახავთ "მოსვლის" (arrival) ჩანაწერს.
 """
 import argparse
 import json
@@ -38,15 +22,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-# --- tuning knobs ----------------------------------------------------------------------
-# A countdown that jumps UP by more than this (minutes) means a new vehicle, not the one
-# we were tracking — close the current approach and start a fresh one.
+# თუ უკუთვლა გაიზარდა 3+ წუთით, მაშინ ვთვლით, რომ უკვე სხვა ავტობუსზეა საუბარი და თვლა უკვე სხვა ავტობუსისაა.
 RESET_JUMP_MIN = 3
-# A time gap larger than this (seconds) between two readings of the same lane breaks the
-# approach: we lost sight of the bus, so we don't stitch across the hole.
+# თუ ერთი მარშრუტის უკუთვლებს შორის 3+ წუთი გავიდა, მაშინ ვთვლით, რომ ავტობუსი უკვე გაჩერებიდან წავიდა და თვლა უკვე სხვა ავტობუსისაა.
 MAX_GAP_SECONDS = 180
-# An approach only counts as a real arrival if the countdown got at least this low. A bus
-# we only ever saw at 15+ min away and then lost is not a confirmed arrival.
+# თუ ავტობუსი არ მივიდა 2 წუთში, მაშინ ვთვლით, რომ ეს ავტობუსი ვერ მოვიდა და არ ვქმნით arrival ჩანაწერს.
 ARRIVAL_MAX_REMAINING_MIN = 2
 
 Reading = Tuple[datetime, int, Optional[int]]  # (timestamp, realtime_minutes, scheduled_minutes)
@@ -57,10 +37,10 @@ def parse_ts(ts: str) -> datetime:
 
 
 def read_lanes(paths: Iterable[Path]) -> Dict[Tuple[str, str, str], Dict[str, Any]]:
-    """Load every raw record and bucket realtime readings into lanes.
+    """ვიღებთ ყველა დაუმუშავებელ ჩანაწერს და ვყრით lane-ებში (stop_id, shortName, patternSuffix) მიხედვით.
 
-    Returns: lane_key -> {"headsign": str, "readings": List[Reading]} where lane_key is
-    (stop_id, shortName, patternSuffix). Readings are appended in file order (chronological).
+    lane არის კონკრეტული გაჩერება + კონკრეტული მარშრუტი + კონკრეტული მარშრუტის მიმართულება (patternSuffix).
+    ანუ, x მარშრუტს y მიმართულებით z გაჩერებისთვის lane-ი იქნება (z, x, y). lane-ები ერთმანეთისგან დამოუკიდებელია.
     """
     lanes: Dict[Tuple[str, str, str], Dict[str, Any]] = defaultdict(
         lambda: {"headsign": "", "readings": []}
@@ -73,7 +53,7 @@ def read_lanes(paths: Iterable[Path]) -> Dict[Tuple[str, str, str], Dict[str, An
                 ts = parse_ts(rec["ts"])
                 for a in rec["payload"]:
                     if not a.get("realtime"):
-                        continue  # scheduled-only guess — can't anchor an arrival
+                        continue # მხოლოდ რეალურ დროში მოსვლები გვაინტერესებს, არა მხოლოდ დაგეგმილი
                     key = (stop_id, a["shortName"], a.get("patternSuffix") or "")
                     lane = lanes[key]
                     lane["headsign"] = a.get("headsign", lane["headsign"])
@@ -84,11 +64,7 @@ def read_lanes(paths: Iterable[Path]) -> Dict[Tuple[str, str, str], Dict[str, An
 
 
 def segment_arrivals(readings: List[Reading]) -> List[Dict[str, Any]]:
-    """Split one lane's time-ordered readings into individual arrivals.
-
-    An approach is a run of non-increasing countdowns. It closes (and may emit an arrival)
-    when the countdown jumps up past RESET_JUMP_MIN, when a gap exceeds MAX_GAP_SECONDS, or
-    at end-of-stream.
+    """თითოეული lane-ის უკუთვლების სერიას ვამოწმებთ და ვქმნით მოსვლის (arrival) ჩანაწერებს.
     """
     readings.sort(key=lambda r: r[0])
     arrivals: List[Dict[str, Any]] = []
@@ -100,12 +76,11 @@ def segment_arrivals(readings: List[Reading]) -> List[Dict[str, Any]]:
         last_ts, last_min, last_sched = approach[-1]
         min_remaining = min(r[1] for r in approach)
         if min_remaining > ARRIVAL_MAX_REMAINING_MIN:
-            return  # never got close enough to call it an arrival
-        # Extrapolate the final countdown to zero for the arrival instant.
+            return  # ავტობუსი ვერ მოვიდა 2 წუთში, არ ვქმნით arrival ჩანაწერს.
         arrival_ts = last_ts + timedelta(minutes=last_min)
         arrivals.append({
             "arrival_ts": arrival_ts.isoformat(),
-            "delay_min": last_sched,          # scheduled minutes at last sighting: <0 = late
+            "delay_min": last_sched,
             "n_readings": len(approach),
             "min_remaining_min": min_remaining,
             "first_seen_min": approach[0][1],
@@ -158,7 +133,6 @@ def main() -> None:
                 fh.write(json.dumps(ev, ensure_ascii=False) + "\n")
         print(f"Wrote {len(arrivals)} arrivals -> {args.output}", file=sys.stderr)
 
-    # Summary to stderr so stdout can be piped cleanly when -o is omitted.
     by_route: Dict[str, int] = defaultdict(int)
     late = on_time = 0
     for ev in arrivals:
