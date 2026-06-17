@@ -31,8 +31,8 @@ POSITIONS_POLL_INTERVAL_SECONDS = _int("POSITIONS_POLL_INTERVAL_SECONDS", 60)
 POSITIONS_BOTH_DIRECTIONS = os.getenv("POSITIONS_BOTH_DIRECTIONS", "true").lower() == "true"
 
 # ყოველ რამდენ ციკლში სცადოს ხელახლა 500-ით გამოტოვებული (route, forward) წყვილები.
-# 0 = არასდროს (ძველი ქცევა). ეს იცავს დროებითი API შეფერხებისგან, რომელიც სხვა შემთხვევაში
-# სამუდამოდ გამოტოვებდა ყველა მარშრუტს.
+# 0 = არასდროს (ძველი ქცევა). ეს იცავს API-ს დროებითი შეფერხებისგან, რომელიც სხვა შემთხვევაში
+# მუდამ გამოტოვებდა ყველა მარშრუტს.
 POSITIONS_SKIP_RETRY_CYCLES = _int("POSITIONS_SKIP_RETRY_CYCLES", 60)
 
 # ციკლში იტერაციისას HTTP requests-ებს შორის ინტერვალები, რომ API არ გადაიტვირთოს.

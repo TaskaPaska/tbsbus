@@ -7,6 +7,11 @@
 data/raw/
 *.jsonl
 
+# Generated/processed data and model artifacts (re-creatable from raw via the pipeline)
+data/processed/
+*.joblib
+*.pkl
+
 # Selected stop set is machine-generated; keep it local unless deliberately shared
 services/collector/tracked_stops.json
 
