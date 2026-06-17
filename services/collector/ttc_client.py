@@ -1,8 +1,5 @@
-"""Thin client for the Tbilisi Transport Company (TTC / AzRy) API.
-
-This is the backend behind the official Tbilisi Transport app. Endpoint shapes were
-derived from the reference wrapper (https://github.com/sunneydev/ttc-api) and must be
-confirmed against the live API before being trusted.
+"""კლიენტი Tbilisi Transport Company (TTC / AzRy)-ის API-სთვის.
+endpoint-ები აღებულია სამაგალითო API wrapper-იდან (https://github.com/sunneydev/ttc-api)
 """
 import os
 from typing import Any, Dict, List, Optional, Tuple
@@ -21,7 +18,7 @@ class TTCClient:
 
     @classmethod
     def from_env(cls, **kwargs) -> "TTCClient":
-        """Build a client from the API_KEY environment variable (loads .env if present)."""
+        """კლიენტი უნდა დაიბილდოს API_KEY ცვლადისგან"""
         try:
             from dotenv import load_dotenv
             load_dotenv()
@@ -29,7 +26,7 @@ class TTCClient:
             pass
         api_key = os.getenv("API_KEY")
         if not api_key:
-            raise RuntimeError("API_KEY is not set (put it in services/collector/.env)")
+            raise RuntimeError("API_KEY არაა დაკონფიგურირებული (დასამატებელია services/collector/.env-ში)")
         return cls(api_key=api_key, **kwargs)
 
     def _get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Any:
@@ -39,37 +36,46 @@ class TTCClient:
         response.raise_for_status()
         return response.json()
 
-    # --- endpoints ---------------------------------------------------------
+    # --- endpoints-ები ---------------------------------------------------------
 
+    # ყველა გაჩერება
     def stops(self) -> List[Dict[str, Any]]:
         return self._get("/stops")
 
+    # კონკრეტული გაჩერება ID-ს მიხედვით
     def stop(self, stop_id: str) -> Dict[str, Any]:
         return self._get(f"/stops/1:{stop_id}")
 
+    # ყველა მარშრუტი
     def routes(self, modes: str = "BUS") -> List[Dict[str, Any]]:
         return self._get("/routes", {"modes": modes})
 
+    # მარშრუტები, რომლებიც კონკრეტულ გაჩერებაზე გადიან
     def stop_routes(self, stop_id: str) -> List[Dict[str, Any]]:
         return self._get(f"/stops/1:{stop_id}/routes")
 
+    # როდის მოვა კონკრეტულ გაჩერებაზე ავტობუსი (TTC-ს API-ს მიხედვით).
     def arrival_times(self, stop_id: str, ignore_scheduled: bool = False) -> Any:
-        # NOTE: the query key is misspelled server-side ("Schedulerd"); kept as-is to match the API.
+        # შენიშვნა: თვითონ სერვერის მხრიდან არასწორადაა დაწერილი "Schedulerd", ასე იღებს API.
         params = {"ignoreSchedulerdArrivalTimes": str(ignore_scheduled).lower()}
         return self._get(f"/stops/1:{stop_id}/arrival-times", params)
 
+    # ავტობუსების მიმდინარე პოზიციები კონკრეტულ მარშრუტზე. forward-ი მარშრუტის მიმართულებას ნიშნავს.
     def positions(self, route_id: str, forward: bool = True) -> Any:
         params = {"forward": str(forward).lower()}
         return self._get(f"/routes/1:{route_id}/positions", params)
 
+    # მარშრუტის ფორმა/გეომეტრიული ფორმის მონაცემები.
     def bus_polyline(self, route_id: str, forward: bool = True) -> Any:
         params = {"forward": str(forward).lower()}
         return self._get(f"/routes/1:{route_id}/polyline", params)
 
+    # მარშრუტის გაჩერებები.
     def route_stops(self, route_id: str, forward: bool = False) -> List[Dict[str, Any]]:
         params = {"forward": str(forward).lower()}
         return self._get(f"/routes/1:{route_id}/stops", params)
 
+    # ორ წერტილს შორის მარშრუტის დაგეგმვა. მხოლოდ ფეხით და ავტობუსით მგზავრობაა გათვალისწინებული.
     def plan(self, from_coords: Tuple[float, float], to_coords: Tuple[float, float]) -> Any:
         params = {
             "fromPlace": f"{from_coords[0]},{from_coords[1]}",
