@@ -1,10 +1,5 @@
-"""One-shot live probe of the TTC API to confirm endpoint shapes before trusting them.
-
-Hits each endpoint we depend on exactly once and prints the top-level structure and the
-keys of the first element, so field names in the client/selector can be validated against
-reality (CLAUDE.md: confirm endpoints live; do not assume).
-
-    python probe_api.py
+"""ერთჯერადი "დიაგნოსტიკა", რომ დავრწმუნდეთ, რომ API-თ ჯერ კიდევ მოგვაქვს მონაცემები სწორედ იმ ფორმატში, რასაც ველოდით.
+ეს არის ე.წ. sanity check, რომ არ დავიწყოთ/გავაგრძელოთ მონაცემების შეგროვება, თუ API შეიცვალა.
 """
 import json
 from typing import Any
@@ -13,6 +8,7 @@ from ttc_client import TTCClient
 
 
 def describe(label: str, data: Any) -> None:
+    """პრინტავს მონაცემების ტიპს, ზომას და პირველ ელემენტს (თუ არის list ან dict)."""
     print(f"\n=== {label} ===")
     if isinstance(data, list):
         print(f"list of {len(data)}")
@@ -33,7 +29,7 @@ def main() -> None:
     stops = c.stops()
     describe("stops()", stops)
 
-    # Pick a sample stop and a sample bus route to probe dependent endpoints.
+    # თუ გვაქვს ავტობუსის გაჩერებები, ვამოწმებთ arrival_times და stop_routes-ის სტრუქტურას კონკრეტულ გაჩერებაზე.
     sample_stop = next((s for s in stops if s.get("vehicleMode") == "BUS"), stops[0])
     sid = str(sample_stop.get("id", "")).split(":", 1)[-1]
     describe(f"arrival_times(stop={sid})", c.arrival_times(sid))
