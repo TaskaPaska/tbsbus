@@ -1,0 +1,58 @@
+# dev orchestration — ერთი ბრძანებით ასაშვები სტეკი.
+#   docker compose up --build              # collector + api (ის, რაც დღეს რეალურად მუშაობს)
+#   docker compose --profile db up          # + PostgreSQL/PostGIS (ETL ფაზისთვის)
+#
+# Kafka ჯერ არ ერთვის: collector ჯერ JSONL-ში წერს და არცერთი სერვისი broker-ს არ production-ებს —
+# 8GB კვანძზე უქმი broker-ი მხოლოდ RAM-ს ჭამდა. დაემატება მაშინ, როცა collector Kafka-ში დაიწყებს წერას.
+
+services:
+  # TTC API-ს poller -> JSONL. API_KEY collector/.env-დან.
+  collector:
+    build: ./services/collector
+    env_file: ./services/collector/.env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - raw_data:/data
+    mem_limit: 128m            # მხოლოდ requests-ის ციკლია; ცოტა სჭირდება (tunable).
+    restart: unless-stopped
+
+  # თხელი Flask REST — ცოცხალი პროგნოზებს აწვდის. მოდელი image-შია ჩაშენებული.
+  api:
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    env_file: ./services/collector/.env   # API_KEY-ს იზიარებს collector-თან.
+    ports:
+      - "${API_PORT:-5000}:5000"   # host port override-ადია (მაგ. API_PORT=5001), თუ 5000 დაკავებულია.
+    mem_limit: 1g              # pandas + sklearn მოდელი 2 gunicorn worker-ში (tunable).
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ETL ფაზის სამიზნე საცავი. profile-ით — default up-ი მის გარეშე მსუბუქი რჩება.
+  postgres:
+    image: postgis/postgis:16-3.4
+    profiles: ["db"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ttc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ttc}
+      POSTGRES_DB: ${POSTGRES_DB:-ttc}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ttc}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  raw_data:     # collector-ის JSONL snapshot-ები
+  pgdata:       # PostgreSQL მონაცემები

@@ -1,0 +1,5 @@
+# secret-ი runtime-ზე env_file-იდან მოდის — image-ში არ უნდა ჩაიწეროს.
+.env
+__pycache__/
+*.pyc
+.venv/
