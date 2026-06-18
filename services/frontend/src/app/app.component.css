@@ -1,0 +1,21 @@
+:host {
+  display: block;
+  max-width: 760px;
+  margin: 2rem auto;
+  padding: 0 1rem;
+  font-family: system-ui, sans-serif;
+  color: #1a1a1a;
+}
+h1 { font-size: 1.4rem; margin-bottom: 0.25rem; }
+.sub { color: #666; margin-top: 0; }
+.picker { display: flex; gap: 0.5rem; align-items: center; margin: 1.25rem 0; }
+.picker input { padding: 0.4rem 0.6rem; border: 1px solid #ccc; border-radius: 6px; width: 8rem; }
+.picker button { padding: 0.4rem 0.9rem; border: 0; border-radius: 6px; background: #00B38B; color: #fff; cursor: pointer; }
+.picker button:disabled { opacity: 0.6; cursor: default; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 0.5rem 0.6rem; border-bottom: 1px solid #eee; text-align: left; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.route { font-weight: 600; }
+.pred { font-weight: 700; color: #00805f; }
+.error { color: #c0392b; }
+.empty { color: #888; }

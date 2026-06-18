@@ -1,0 +1,5 @@
+{
+  "//": "dev proxy — ng serve-ის /predict და /health Flask API-ზე (localhost:5000) გადააქვს, CORS-ის გარეშე.",
+  "/predict": { "target": "http://localhost:5000", "secure": false },
+  "/health": { "target": "http://localhost:5000", "secure": false }
+}
