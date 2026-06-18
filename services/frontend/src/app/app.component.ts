@@ -1,42 +1,41 @@
-import { Component } from '@angular/core';
+import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
+import { StopPickerComponent } from './stop-picker.component';
+import { ArrivalsComponent } from './arrivals.component';
+import { StopService } from './stop.service';
+import { Stop, Arrival } from './models';
 
-// API-ს /predict/<stop_id> პასუხის ფორმა (იხ. services/api/predict.py: predict_stop).
-interface Arrival {
-  route: string;
-  headsign: string;
-  pattern: string;
-  operator_min: number;     // baseline: ოპერატორის realtimeArrivalMinutes
-  scheduled_min: number | null;
-  predicted_min: number;    // ჩვენი მოდელის კორექტირებული პროგნოზი
-}
-interface PredictResponse { stop_id: string; arrivals: Arrival[]; }
-
+// shell — გაჩერებებს ტვირთავს, picker-სა და arrivals-ს აკავშირებს.
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, StopPickerComponent, ArrivalsComponent],
   templateUrl: './app.component.html',
   styleUrl: './app.component.css'
 })
-export class AppComponent {
-  stopId = '806';            // default — დატვირთული გაჩერება (demo).
+export class AppComponent implements OnInit {
+  stops: Stop[] = [];
+  selected: Stop | null = null;
   arrivals: Arrival[] = [];
   loading = false;
   error = '';
 
-  constructor(private http: HttpClient) {}
+  constructor(private api: StopService) {}
 
-  load(): void {
-    const id = this.stopId.trim();
-    if (!id) { return; }
+  ngOnInit(): void {
+    this.api.getStops().subscribe({
+      next: (res) => { this.stops = res.stops; },
+      error: () => { this.error = 'გაჩერებების სია ვერ ჩაიტვირთა.'; }
+    });
+  }
+
+  onStopSelected(stop: Stop): void {
+    this.selected = stop;
     this.loading = true;
     this.error = '';
-    // dev-ში relative path proxy.conf.json-ით Flask-ზე გადადის (CORS-ის გარეშე).
-    this.http.get<PredictResponse>(`/predict/${id}`).subscribe({
+    this.arrivals = [];
+    this.api.predict(stop.id).subscribe({
       next: (res) => { this.arrivals = res.arrivals; this.loading = false; },
-      error: (e) => { this.error = e?.error?.error || e.message || 'შეცდომა'; this.loading = false; this.arrivals = []; }
+      error: (e) => { this.error = e?.error?.error || 'პროგნოზი ვერ ჩაიტვირთა.'; this.loading = false; }
     });
   }
 }

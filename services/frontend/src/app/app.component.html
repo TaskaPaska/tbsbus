@@ -1,35 +1,16 @@
+<header>
+  <h1>თბილისის ავტობუსი</h1>
+  <p class="tagline">აირჩიე გაჩერება — მიიღე AI პროგნოზი ჩამოსვლამდე</p>
+</header>
+
 <main>
-  <h1>თბილისის ავტობუსები — მოსვლის პროგნოზი</h1>
-  <p class="sub">მოდელის პროგნოზი ოპერატორისა და განრიგის baseline-ებთან შედარებით.</p>
+  <p class="load-error" *ngIf="error && !selected">⚠ {{ error }}</p>
 
-  <form (ngSubmit)="load()" class="picker">
-    <label for="stop">გაჩერების ID</label>
-    <input id="stop" name="stop" [(ngModel)]="stopId" placeholder="მაგ. 806" />
-    <button type="submit" [disabled]="loading">{{ loading ? 'იტვირთება…' : 'პროგნოზი' }}</button>
-  </form>
+  <app-stop-picker [stops]="stops" (stopSelected)="onStopSelected($event)"></app-stop-picker>
 
-  <p class="error" *ngIf="error">⚠ {{ error }}</p>
-
-  <table *ngIf="arrivals.length">
-    <thead>
-      <tr>
-        <th>მარშრუტი</th>
-        <th>მიმართულება</th>
-        <th class="num">მოდელი (წთ)</th>
-        <th class="num">ოპერატორი</th>
-        <th class="num">განრიგი</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr *ngFor="let a of arrivals">
-        <td class="route">{{ a.route }}</td>
-        <td>{{ a.headsign }}</td>
-        <td class="num pred">{{ a.predicted_min }}</td>
-        <td class="num">{{ a.operator_min }}</td>
-        <td class="num">{{ a.scheduled_min ?? '—' }}</td>
-      </tr>
-    </tbody>
-  </table>
-
-  <p class="empty" *ngIf="!arrivals.length && !error && !loading">ამ გაჩერებაზე realtime პროგნოზი ვერ მოიძებნა.</p>
+  <app-arrivals [stop]="selected" [arrivals]="arrivals" [loading]="loading" [error]="error"></app-arrivals>
 </main>
+
+<footer>
+  <p>დაფარულია {{ stops.length }} გაჩერება. პროგნოზი მხოლოდ realtime რეისებზე. <strong>დემო / PoC.</strong></p>
+</footer>

@@ -7,6 +7,7 @@
 გაშვება:
     cd services/api && API_KEY=... python app.py
 """
+import json
 import os
 import sys
 from pathlib import Path
@@ -22,15 +23,33 @@ sys.path.insert(0, str(_COLLECTOR))
 from ttc_client import TTCClient  # noqa: E402
 
 MODEL_PATH = Path(os.getenv("MODEL_PATH", Path(__file__).resolve().parents[1] / "ml" / "model.joblib"))
+# დაფარული გაჩერებების სია (frontend-ის picker/map-ისთვის) — collector-ის შერჩევაა ერთადერთი წყარო.
+STOPS_FILE = Path(os.getenv("TRACKED_STOPS_FILE", _COLLECTOR / "tracked_stops.json"))
+
+
+def _load_stops():
+    """tracked_stops.json-დან frontend-ისთვის საჭირო ველებს ვტვირთავთ (id, name, lat, lon, routes)."""
+    with open(STOPS_FILE, encoding="utf-8") as f:
+        raw = json.load(f).get("stops", [])
+    return [{"id": s["id"], "name": s["name"], "lat": s["lat"], "lon": s["lon"],
+             "routes": s.get("routes", [])} for s in raw]
+
 
 app = Flask(__name__)
 service = PredictionService(MODEL_PATH)
 client = TTCClient.from_env()
+STOPS = _load_stops()  # ერთხელ იტვირთება startup-ზე; მცირე და სტატიკურია.
 
 
 @app.get("/health")
 def health():
     return jsonify(status="ok", model=str(MODEL_PATH.name))
+
+
+@app.get("/stops")
+def stops():
+    """დაფარული გაჩერებების სია — frontend-ის ძებნისა და რუკისთვის."""
+    return jsonify(stops=STOPS)
 
 
 @app.get("/predict/<stop_id>")
