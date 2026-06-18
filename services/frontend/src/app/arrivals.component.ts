@@ -11,7 +11,7 @@ import { Arrival, Stop } from './models';
     <ng-container *ngIf="stop">
       <div class="head">
         <h2>{{ stop.name }}</h2>
-        <span class="hint">AI პროგნოზი vs ოპერატორი</span>
+        <span class="hint">ჩვენი AI პროგნოზი vs ოპერატორის (TTC)</span>
       </div>
 
       <div class="chips" *ngIf="routes.length">
@@ -29,18 +29,25 @@ import { Arrival, Stop } from './models';
       <ul class="cards">
         <li class="card" *ngFor="let a of view">
           <span class="route">{{ a.route }}</span>
-          <span class="dest">{{ a.headsign }}</span>
-          <span class="pred">
-            <span class="min">{{ a.predicted_min }}</span><span class="unit">წთ</span>
-            <span class="tag">AI</span>
-          </span>
-          <span class="base">ოპერ. {{ a.operator_min }}</span>
+          <div class="body">
+            <div class="dest">{{ a.headsign }}</div>
+            <div class="stats">
+              <div class="stat ai">
+                <span class="lbl">AI</span>
+                <span class="val">{{ fmt(a.predicted_min) }}</span>
+              </div>
+              <div class="stat ttc">
+                <span class="lbl">TTC</span>
+                <span class="val">{{ fmt(a.operator_min) }}</span>
+              </div>
+            </div>
+          </div>
         </li>
       </ul>
     </ng-container>
   `,
   styles: [`
-    .head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; }
+    .head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
     h2 { font-size: 1.15rem; margin: 0.5rem 0 0.25rem; }
     .hint { color: #888; font-size: 0.75rem; }
     .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 0.75rem; }
@@ -50,17 +57,23 @@ import { Arrival, Stop } from './models';
     .status { color: #888; }
     .status.error { color: #c0392b; }
     .cards { list-style: none; margin: 0; padding: 0; }
-    .card { display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto;
-            align-items: center; gap: 0.1rem 0.7rem; padding: 0.7rem 0.2rem; border-bottom: 1px solid #eee; }
-    .route { grid-row: 1 / 3; font-weight: 700; background: #1a1a1a; color: #fff; border-radius: 8px;
-             padding: 0.3rem 0.55rem; font-size: 0.95rem; min-width: 2.2rem; text-align: center; }
+    .card { display: flex; align-items: center; gap: 0.7rem; padding: 0.7rem 0.2rem;
+            border-bottom: 1px solid #eee; }
+    .route { flex: none; font-weight: 700; background: #1a1a1a; color: #fff; border-radius: 8px;
+             padding: 0.35rem 0.55rem; font-size: 0.95rem; min-width: 2.4rem; text-align: center; }
+    .body { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
     .dest { font-weight: 500; }
-    .base { color: #999; font-size: 0.8rem; }
-    .pred { grid-row: 1 / 3; justify-self: end; display: flex; align-items: baseline; gap: 0.15rem; }
-    .pred .min { font-size: 1.7rem; font-weight: 800; color: #00805f; line-height: 1; }
-    .pred .unit { color: #00805f; font-size: 0.85rem; }
-    .pred .tag { margin-left: 0.35rem; background: #e8f8f3; color: #00805f; font-size: 0.65rem;
-                 font-weight: 700; padding: 0.1rem 0.35rem; border-radius: 5px; align-self: center; }
+    .stats { display: flex; gap: 0.5rem; flex: none; }
+    .stat { display: flex; flex-direction: column; align-items: center; min-width: 3.4rem;
+            border-radius: 9px; padding: 0.3rem 0.4rem; }
+    .stat .lbl { font-size: 0.6rem; font-weight: 700; letter-spacing: 0.04em; }
+    .stat .val { font-size: 1.15rem; font-weight: 800; line-height: 1.1; white-space: nowrap; }
+    .stat.ai { background: #e8f8f3; }
+    .stat.ai .lbl { color: #00805f; }
+    .stat.ai .val { color: #00805f; }
+    .stat.ttc { background: #f1f1f1; }
+    .stat.ttc .lbl { color: #777; }
+    .stat.ttc .val { color: #444; }
   `]
 })
 export class ArrivalsComponent implements OnChanges {
@@ -86,5 +99,13 @@ export class ArrivalsComponent implements OnChanges {
 
   private applyFilter(): void {
     this.view = this.routeFilter ? this.arrivals.filter(a => a.route === this.routeFilter) : this.arrivals;
+  }
+
+  // user-facing ფორმატი: უარყოფითს 0-ზე ვჭრით (ავტობუსი ვერ მოვა „-1 წუთში"),
+  // 1 წუთზე ნაკლები -> „ახლა"; დანარჩენი — მთელ წუთებად.
+  fmt(min: number | null): string {
+    if (min === null || min === undefined) { return '—'; }
+    const m = Math.max(0, min);
+    return m < 0.5 ? 'ახლა' : `${Math.round(m)} წთ`;
   }
 }
