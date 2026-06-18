@@ -34,3 +34,6 @@ docs/decisions.md
 .idea/
 .DS_Store
 Thumbs.db
+
+# Claude Design reference mockup (not source)
+Mova Bus App (standalone).html

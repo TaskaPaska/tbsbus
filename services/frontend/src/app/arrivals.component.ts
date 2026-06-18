@@ -10,13 +10,23 @@ import { Arrival, Stop } from './models';
   template: `
     <ng-container *ngIf="stop">
       <div class="head">
-        <h2>{{ stop.name }}</h2>
-        <span class="hint">ჩვენი AI პროგნოზი vs ოპერატორის (TTC)</span>
+        <div>
+          <div class="eyebrow">მომავალი ავტობუსები</div>
+          <div class="stopname">{{ stop.name }}</div>
+        </div>
+        <span class="live" *ngIf="!loading && view.length">
+          <span class="dot"><i></i><i></i></span>ცოცხალი
+        </span>
+      </div>
+
+      <div class="legend">
+        <span><i class="sw ai"></i>AI — ჩემი მოდელი</span>
+        <span><i class="sw ttc"></i>TTC — ოფიციალური</span>
       </div>
 
       <div class="chips" *ngIf="routes.length">
         <button class="chip" [class.on]="!routeFilter" (click)="setFilter(null)">ყველა</button>
-        <button class="chip" *ngFor="let r of routes" [class.on]="routeFilter === r"
+        <button class="chip num" *ngFor="let r of routes" [class.on]="routeFilter === r"
                 (click)="setFilter(r)">{{ r }}</button>
       </div>
 
@@ -29,17 +39,23 @@ import { Arrival, Stop } from './models';
       <ul class="cards">
         <li class="card" *ngFor="let a of view">
           <span class="route">{{ a.route }}</span>
-          <div class="body">
+          <div class="info">
             <div class="dest">{{ a.headsign }}</div>
-            <div class="stats">
-              <div class="stat ai">
-                <span class="lbl">AI</span>
-                <span class="val">{{ fmt(a.predicted_min) }}</span>
-              </div>
-              <div class="stat ttc">
-                <span class="lbl">TTC</span>
-                <span class="val">{{ fmt(a.operator_min) }}</span>
-              </div>
+            <!-- განრიგი ხშირად 0/უარყოფითია (სუსტი baseline) — ვაჩვენებთ მხოლოდ როცა აზრიანია. -->
+            <div class="sched" *ngIf="a.scheduled_min != null && !isNow(a.scheduled_min)">
+              გრაფიკით {{ mins(a.scheduled_min) }} წთ
+            </div>
+          </div>
+          <div class="preds">
+            <div class="pred ai">
+              <span class="lbl">AI</span>
+              <span class="val" *ngIf="isNow(a.predicted_min)">ახლა</span>
+              <span class="val" *ngIf="!isNow(a.predicted_min)"><b>{{ mins(a.predicted_min) }}</b> წთ</span>
+            </div>
+            <div class="pred ttc">
+              <span class="lbl">TTC</span>
+              <span class="val" *ngIf="isNow(a.operator_min)">ახლა</span>
+              <span class="val" *ngIf="!isNow(a.operator_min)"><b>{{ mins(a.operator_min) }}</b> წთ</span>
             </div>
           </div>
         </li>
@@ -47,33 +63,57 @@ import { Arrival, Stop } from './models';
     </ng-container>
   `,
   styles: [`
-    .head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
-    h2 { font-size: 1.15rem; margin: 0.5rem 0 0.25rem; }
-    .hint { color: #888; font-size: 0.75rem; }
-    .chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.5rem 0 0.75rem; }
-    .chip { border: 1px solid #ccc; background: #fff; border-radius: 999px; padding: 0.25rem 0.7rem;
-            font-size: 0.85rem; cursor: pointer; }
-    .chip.on { background: #00B38B; color: #fff; border-color: #00B38B; }
-    .status { color: #888; }
+    .head { display: flex; align-items: flex-end; justify-content: space-between; gap: 0.5rem;
+            padding: 20px 0 10px; }
+    .eyebrow { font: 700 11px var(--mono); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+    .stopname { font: 700 19px var(--geo); color: var(--ink); margin-top: 3px; }
+    .live { display: inline-flex; align-items: center; gap: 6px; font: 600 11px var(--geo);
+            color: var(--green2); padding-bottom: 3px; white-space: nowrap; }
+    .live .dot { position: relative; width: 8px; height: 8px; display: inline-block; }
+    .live .dot i { position: absolute; inset: 0; border-radius: 50%; background: var(--green-border); display: block; }
+    .live .dot i:last-child { animation: movaPulse 1.8s ease infinite; }
+
+    .legend { display: flex; gap: 16px; align-items: center; background: rgba(255,255,255,0.65);
+              border: 1px solid var(--card-border); border-radius: 14px; padding: 9px 13px;
+              font: 500 12px var(--geo); color: #3a4a47; margin-bottom: 12px; }
+    .legend span { display: flex; align-items: center; gap: 6px; }
+    .sw { width: 11px; height: 11px; border-radius: 4px; display: block; }
+    .sw.ai { background: var(--grad-green); }
+    .sw.ttc { background: #fff; border: 1.5px solid #b6c4c0; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+    .chip { border: 1px solid var(--card-border); background: rgba(255,255,255,0.8); color: var(--ink2);
+            border-radius: 13px; padding: 8px 14px; font: 600 13px var(--geo); cursor: pointer; }
+    .chip.num { font: 700 13px var(--mono); }
+    .chip.on { background: var(--grad-green); color: #fff; border-color: transparent;
+               box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 6px 14px -8px rgba(0,150,120,0.55); }
+    .status { color: var(--muted2); }
     .status.error { color: #c0392b; }
-    .cards { list-style: none; margin: 0; padding: 0; }
-    .card { display: flex; align-items: center; gap: 0.7rem; padding: 0.7rem 0.2rem;
-            border-bottom: 1px solid #eee; }
-    .route { flex: none; font-weight: 700; background: #1a1a1a; color: #fff; border-radius: 8px;
-             padding: 0.35rem 0.55rem; font-size: 0.95rem; min-width: 2.4rem; text-align: center; }
-    .body { flex: 1; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
-    .dest { font-weight: 500; }
-    .stats { display: flex; gap: 0.5rem; flex: none; }
-    .stat { display: flex; flex-direction: column; align-items: center; min-width: 3.4rem;
-            border-radius: 9px; padding: 0.3rem 0.4rem; }
-    .stat .lbl { font-size: 0.6rem; font-weight: 700; letter-spacing: 0.04em; }
-    .stat .val { font-size: 1.15rem; font-weight: 800; line-height: 1.1; white-space: nowrap; }
-    .stat.ai { background: #e8f8f3; }
-    .stat.ai .lbl { color: #00805f; }
-    .stat.ai .val { color: #00805f; }
-    .stat.ttc { background: #f1f1f1; }
-    .stat.ttc .lbl { color: #777; }
-    .stat.ttc .val { color: #444; }
+
+    .cards { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+    .card { display: flex; align-items: center; gap: 12px; background: var(--card); backdrop-filter: blur(10px);
+            border: 1px solid var(--card-border); border-radius: 22px; padding: 14px; box-shadow: var(--shadow-card); }
+    .route { flex: none; width: 46px; height: 46px; border-radius: 14px;
+             background: linear-gradient(var(--badge1), var(--badge2)); color: #fff;
+             display: flex; align-items: center; justify-content: center; font: 700 17px var(--mono);
+             box-shadow: 0 1px 0 rgba(255,255,255,0.15) inset; }
+    .info { flex: 1; min-width: 0; }
+    .dest { font: 700 16px var(--geo); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sched { font: 500 12px var(--geo); color: var(--muted2); margin-top: 2px; }
+    .preds { display: flex; flex-direction: column; gap: 6px; flex: none; }
+    .pred { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+            border-radius: 12px; padding: 6px 11px; min-width: 96px; }
+    .pred .lbl { font: 700 10px var(--mono); letter-spacing: 0.06em; }
+    .pred .val { font: 500 11px var(--geo); }
+    .pred .val b { font: 700 18px var(--mono); }
+    .pred.ai { background: var(--grad-green); box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset, 0 6px 14px -7px rgba(0,150,120,0.6); }
+    .pred.ai .lbl { color: rgba(255,255,255,0.85); }
+    .pred.ai .val { color: #fff; }
+    .pred.ttc { background: var(--ttc-bg); border: 1px solid var(--ttc-border); }
+    .pred.ttc .lbl { color: var(--ttc-lbl); }
+    .pred.ttc .val { color: var(--ttc-ink); }
+
+    @keyframes movaPulse { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(2.6); opacity: 0; } }
   `]
 })
 export class ArrivalsComponent implements OnChanges {
@@ -101,11 +141,13 @@ export class ArrivalsComponent implements OnChanges {
     this.view = this.routeFilter ? this.arrivals.filter(a => a.route === this.routeFilter) : this.arrivals;
   }
 
-  // user-facing ფორმატი: უარყოფითს 0-ზე ვჭრით (ავტობუსი ვერ მოვა „-1 წუთში"),
+  // user-facing კლამპი: უარყოფითს 0-ზე ვჭრით (ავტობუსი ვერ მოვა „-1 წუთში").
   // 1 წუთზე ნაკლები -> „ახლა"; დანარჩენი — მთელ წუთებად.
-  fmt(min: number | null): string {
-    if (min === null || min === undefined) { return '—'; }
-    const m = Math.max(0, min);
-    return m < 0.5 ? 'ახლა' : `${Math.round(m)} წთ`;
+  isNow(min: number | null): boolean {
+    return min != null && Math.max(0, min) < 0.5;
+  }
+
+  mins(min: number | null): number {
+    return min == null ? 0 : Math.round(Math.max(0, min));
   }
 }

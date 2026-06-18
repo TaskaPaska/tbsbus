@@ -1,1 +1,49 @@
-/* You can add global styles to this file, and also import other style files */
+/* გლობალური palette — Claude Design „Aqua / glassy" ვარიანტი.
+   ცვლადები :root-შია, რომ scoped component-ებმაც გამოიყენონ. */
+:root {
+  --geo: 'Noto Sans Georgian', system-ui, sans-serif;
+  --mono: 'Space Mono', monospace;
+
+  --bg1: #eef7f5;
+  --bg2: #e0eeeb;
+  --ink: #0f1f1c;
+  --ink2: #28332f;
+  --muted: #5b6b67;
+  --muted2: #7a8a86;
+  --faint: #90a09c;
+
+  --green1: #00c99a;
+  --green2: #00a583;
+  --green-d: #009d7d;
+  --green-ink: #0f7a63;
+  --green-border: #00b38b;
+
+  --card: rgba(255, 255, 255, 0.85);
+  --card-soft: rgba(255, 255, 255, 0.72);
+  --card-border: rgba(255, 255, 255, 0.95);
+
+  --badge1: #2b3a37;
+  --badge2: #1b2522;
+
+  --ttc-bg: #eef2f1;
+  --ttc-border: #e0e8e6;
+  --ttc-ink: #475a56;
+  --ttc-lbl: #94a3a0;
+
+  --grad-green: linear-gradient(var(--green1), var(--green2));
+  --shadow-card: 0 16px 32px -20px rgba(20, 60, 55, 0.5), 0 1px 0 0 rgba(255, 255, 255, 0.95) inset;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  font-family: var(--geo);
+  color: var(--ink);
+  background: linear-gradient(var(--bg1), var(--bg2)) fixed;
+}
+
+/* Leaflet zoom ღილაკები palette-ში */
+.leaflet-bar a { color: var(--ink2); }

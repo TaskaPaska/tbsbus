@@ -13,43 +13,79 @@ import { distanceMeters } from './stop.service';
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <div class="picker">
-      <input class="search" type="text" [(ngModel)]="query" (ngModelChange)="onQuery()"
-             placeholder="გაჩერების ძებნა სახელით…" />
+    <div class="search-row">
+      <div class="search">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="7" cy="7" r="5" stroke="#5b6b67" stroke-width="2"></circle>
+          <line x1="11" y1="11" x2="15" y2="15" stroke="#5b6b67" stroke-width="2" stroke-linecap="round"></line>
+        </svg>
+        <input type="text" [(ngModel)]="query" (ngModelChange)="onQuery()" placeholder="გაჩერების ძებნა" />
+      </div>
       <button class="near" type="button" (click)="locate()" [disabled]="locating">
-        {{ locating ? '…' : '📍 ჩემთან ახლოს' }}
+        📍 {{ locating ? '…' : 'ახლოს' }}
       </button>
     </div>
     <p class="geo-error" *ngIf="geoError">{{ geoError }}</p>
 
-    <div #map class="map"></div>
+    <div class="map-wrap">
+      <div #map class="map"></div>
+      <div class="count-chip">{{ stops.length }} გაჩერება</div>
+    </div>
 
     <ul class="stop-list">
       <li *ngFor="let s of filtered" [class.active]="s.id === selectedId" (click)="select(s)">
-        <span class="name">{{ s.name }}</span>
-        <span class="meta">{{ s.routes.length }} მარშრუტი</span>
+        <span class="pin" [class.on]="s.id === selectedId"><i></i></span>
+        <span class="info">
+          <span class="name">{{ s.name }}</span>
+          <span class="meta">{{ s.routes.length }} მარშრუტი</span>
+        </span>
+        <span class="check" *ngIf="s.id === selectedId">✓</span>
       </li>
       <li class="none" *ngIf="!filtered.length">ვერ მოიძებნა</li>
     </ul>
   `,
   styles: [`
-    .picker { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
-    .search { flex: 1; padding: 0.55rem 0.7rem; border: 1px solid #ccc; border-radius: 8px; font-size: 1rem; }
-    .near { white-space: nowrap; border: 1px solid #00B38B; background: #fff; color: #00805f;
-            border-radius: 8px; padding: 0 0.7rem; cursor: pointer; }
-    .near:disabled { opacity: 0.5; }
+    .search-row { display: flex; gap: 10px; margin-bottom: 12px; }
+    .search { flex: 1; display: flex; align-items: center; gap: 9px; background: rgba(255,255,255,0.8);
+              border: 1px solid var(--card-border); border-radius: 16px; padding: 12px 14px;
+              box-shadow: 0 1px 0 rgba(255,255,255,0.85) inset, 0 6px 16px -10px rgba(20,60,55,0.4); }
+    .search svg { flex: none; }
+    .search input { flex: 1; border: 0; background: transparent; outline: none;
+                    font: 500 14px var(--geo); color: var(--ink); min-width: 0; }
+    .search input::placeholder { color: var(--faint); }
+    .near { white-space: nowrap; border: 1px solid rgba(255,255,255,0.9); cursor: pointer;
+            background: linear-gradient(#fff, #eef5f3); color: var(--green-ink);
+            font: 600 13px var(--geo); border-radius: 16px; padding: 0 15px;
+            box-shadow: 0 1px 0 rgba(255,255,255,0.9) inset, 0 6px 16px -10px rgba(20,60,55,0.4); }
+    .near:disabled { opacity: 0.55; }
     .geo-error { color: #c0392b; margin: 0 0 0.5rem; font-size: 0.85rem; }
-    .map { height: 260px; border-radius: 10px; overflow: hidden; margin-bottom: 0.75rem; }
-    .stop-list { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto;
-                 border: 1px solid #eee; border-radius: 10px; }
-    .stop-list li { display: flex; justify-content: space-between; align-items: center;
-                    padding: 0.6rem 0.8rem; border-bottom: 1px solid #f0f0f0; cursor: pointer; }
-    .stop-list li:last-child { border-bottom: 0; }
-    .stop-list li.active { background: #e8f8f3; }
-    .stop-list li:hover { background: #f6f6f6; }
-    .name { font-weight: 500; }
-    .meta { color: #888; font-size: 0.8rem; }
-    .none { color: #888; cursor: default; justify-content: center; }
+
+    .map-wrap { position: relative; margin-bottom: 16px; }
+    .map { height: 200px; border-radius: 24px; overflow: hidden;
+           box-shadow: 0 12px 26px -14px rgba(20,60,55,0.45); border: 1px solid rgba(255,255,255,0.7); }
+    .count-chip { position: absolute; left: 12px; bottom: 12px; z-index: 500;
+                  background: rgba(255,255,255,0.92); border-radius: 11px; padding: 6px 11px;
+                  font: 600 11px var(--geo); color: var(--ink2); box-shadow: 0 4px 10px rgba(0,0,0,0.12); }
+
+    .stop-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px;
+                 max-height: 232px; overflow-y: auto; }
+    .stop-list li { display: flex; align-items: center; gap: 12px; cursor: pointer;
+                    background: var(--card-soft); border: 1px solid rgba(255,255,255,0.9);
+                    border-radius: 18px; padding: 13px 15px; }
+    .stop-list li.active { background: linear-gradient(#fff, #f1faf7); border: 1.5px solid var(--green-border);
+                           box-shadow: 0 10px 22px -14px rgba(0,150,120,0.55); }
+    .pin { flex: none; width: 34px; height: 34px; border-radius: 11px; background: #e7eeec;
+           display: flex; align-items: center; justify-content: center; }
+    .pin i { width: 9px; height: 9px; border-radius: 50% 50% 50% 0; background: #8aa3a0;
+             transform: rotate(45deg); display: block; }
+    .pin.on { background: var(--grad-green); box-shadow: 0 1px 0 rgba(255,255,255,0.5) inset; }
+    .pin.on i { background: #fff; }
+    .info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .name { font: 600 15px var(--geo); color: var(--ink2); }
+    .active .name { font-weight: 700; color: var(--ink); }
+    .meta { font: 500 12px var(--geo); color: var(--muted2); margin-top: 2px; }
+    .check { font: 700 13px var(--mono); color: var(--green2); }
+    .none { color: var(--muted2); cursor: default; justify-content: center; }
   `]
 })
 export class StopPickerComponent implements AfterViewInit, OnChanges {
@@ -96,8 +132,9 @@ export class StopPickerComponent implements AfterViewInit, OnChanges {
   }
 
   private markerStyle(active: boolean): L.CircleMarkerOptions {
-    return { radius: active ? 9 : 6, color: '#fff', weight: 2,
-             fillColor: active ? '#c0392b' : '#00B38B', fillOpacity: 1 };
+    // არჩეული — მუქი/დიდი მწვანე; დანარჩენი — ღია მწვანე (palette-ის ფერები).
+    return { radius: active ? 9 : 6, color: '#fff', weight: active ? 3 : 2,
+             fillColor: active ? '#009d7d' : '#00b38b', fillOpacity: 1 };
   }
 
   select(s: Stop): void {
