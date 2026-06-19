@@ -78,7 +78,7 @@ services/
   frontend/     # Angular აპლიკაცია
 data/raw/       # JSONL snapshot-ები (gitignored)
 k8s/            # k3s მანიფესტები (4-კვანძიანი კლასტერი)
-docs/           # decisions.md (დასაბუთებები), ai-usage-log.md
+docs/           # decisions.md (დასაბუთებები)
 ```
 
 თითო სერვისს აქვს საკუთარი `README.md` დეტალური ინსტრუქციით.
@@ -181,6 +181,5 @@ frontend + API ხელმისაწვდომია **https://tbsbus.com**
 ## დოკუმენტაცია
 
 - [`docs/decisions.md`](docs/decisions.md) — დასაბუთება თითო ინჟინრულ გადაწყვეტილებაზე.
-- [`docs/ai-usage-log.md`](docs/ai-usage-log.md) — AI-ს გამოყენების ჟურნალი.
 - `services/*/README.md` — თითო სერვისის დეტალური ინსტრუქცია.
 </content>
