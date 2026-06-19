@@ -1,8 +1,8 @@
 # ფაზა 4 — k3s მანიფესტები. namespace + კონფიგი + secret.
 #
 # კვანძების განაწილება (RAM-რეალობა: atlas/laptops 8GB, forge 32GB):
-#   atlas      (k3s server, always-on)  -> postgres, kafka          label: ttc/storage=true
-#   forge      (32GB workhorse)         -> collector,ingest,api,spark-master,spark-worker
+#   atlas      (k3s server, ყოველთვის ჩართული) -> postgres, kafka     label: ttc/storage=true
+#   forge      (32GB, მთავარი სამუშაო კვანძი)   -> collector,ingest,api,spark-master,spark-worker
 #                                          labels: ttc/role=compute, ttc/spark=true
 #   laptop-1/2 (8GB, Linux VM)          -> spark-worker მხოლოდ        label: ttc/spark=true
 #

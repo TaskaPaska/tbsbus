@@ -41,7 +41,7 @@ spec:
       labels: { app: spark-master }
     spec:
       nodeSelector: { ttc/role: compute }      # forge
-      hostname: spark-master                   # bind/advertise stable hostname
+      hostname: spark-master                   # სტაბილური hostname (bind/advertise-ისთვის)
       containers:
         - name: spark-master
           image: ttc-spark:latest

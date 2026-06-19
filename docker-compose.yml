@@ -121,7 +121,7 @@ services:
     environment:
       SPARK_MASTER_HOST: spark-master
     ports:
-      - "8080:8080"   # Spark master UI
+      - "8080:8080"   # Spark master-ის ვებ-ინტერფეისი
       - "7077:7077"   # worker/submit-ის შესაერთებლად
     mem_limit: 1g
 

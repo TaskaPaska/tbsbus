@@ -32,7 +32,7 @@ OUT_SCHEMA = StructType([
     StructField("hour", IntegerType()),
     StructField("dow", IntegerType()),
     StructField("rt_min", IntegerType()),
-    StructField("sched_min", DoubleType()),   # nullable
+    StructField("sched_min", DoubleType()),   # შესაძლოა იყოს null
     StructField("label_min", DoubleType()),
 ])
 
