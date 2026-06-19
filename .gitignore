@@ -45,3 +45,11 @@ Thumbs.db
 
 # Claude Design reference mockup (not source)
 Mova Bus App (standalone).html
+
+# Private manager comments — NEVER commit (per instruction)
+additional.txt
+
+# Course materials & Word deliverables — kept out of the code repo (sent by email).
+# The technical documentation is delivered by email; to include it in the repo,
+# run: git add -f ტექნიკური_დოკუმენტაცია.docx
+*.docx

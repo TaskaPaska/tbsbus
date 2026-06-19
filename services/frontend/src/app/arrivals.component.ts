@@ -15,13 +15,13 @@ import { Arrival, Stop } from './models';
           <div class="stopname">{{ stop.name }}</div>
         </div>
         <span class="live" *ngIf="!loading && view.length">
-          <span class="dot"><i></i><i></i></span>ცოცხალი
+          <span class="dot"><i></i><i></i></span>live
         </span>
       </div>
 
       <div class="legend">
-        <span><i class="sw ai"></i>AI — ჩემი მოდელი</span>
-        <span><i class="sw ttc"></i>TTC — ოფიციალური</span>
+        <span><i class="sw ai"></i>AI პროგნოზი</span>
+        <span><i class="sw ttc"></i>TTC ოფიციალური</span>
       </div>
 
       <div class="chips" *ngIf="routes.length">
