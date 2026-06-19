@@ -103,6 +103,17 @@ reconstructed:
 - Run collector: `cd services/collector && python collector.py`
 - Dev stack: `docker compose up`
 
+## Public demo exposure (atlas → Cloudflare Tunnel)
+Frontend + API are exposed at **https://tbsbus.com** via a Cloudflare Tunnel running on
+`atlas` (native systemd, no Docker). Rationale + design: see `docs/decisions.md` §7.
+- **cloudflared config:** `/etc/cloudflared/config.yml` (tunnel `ttc-demo`; ingress
+  `tbsbus.com → http://127.0.0.1:8080`, catch-all `404`). Credentials:
+  `/etc/cloudflared/<tunnel-uuid>.json` + `~atlas/.cloudflared/cert.pem` — **never commit**.
+- **systemd units on atlas:** `cloudflared`, `caddy` (reverse proxy, `127.0.0.1:8080`, static
+  bundle in `/var/www/ttc` + proxies `/predict`,`/stops`,`/health`), `ttc-api`
+  (gunicorn `127.0.0.1:5000`). All enabled (survive reboot). Caddyfile: `/etc/caddy/Caddyfile`.
+- Postgres/Kafka/Spark are NOT exposed (not run on atlas; API/Caddy bind loopback only).
+
 ## Current status / next step
 Phase 1: build and run the collector on `atlas` and start accumulating real JSONL data.
 Everything else depends on data existing, so this comes first.

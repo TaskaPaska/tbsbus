@@ -3,6 +3,14 @@
 .env.*
 !.env.example
 
+# Cloudflare Tunnel — never commit credentials/cert (these live on atlas: /etc/cloudflared, ~/.cloudflared).
+# Narrow, explicit patterns only — do NOT blanket-ignore *.json (would mask tracked configs).
+cert.pem
+*.pem
+.cloudflared/
+**/cloudflared/*.json     # tunnel credentials file is <TUNNEL-UUID>.json
+*tunnel*credentials*.json
+
 # Collected data (raw snapshots — can be large; never committed)
 data/raw/
 *.jsonl
