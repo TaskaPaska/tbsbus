@@ -113,7 +113,3 @@ Frontend + API are exposed at **https://tbsbus.com** via a Cloudflare Tunnel run
   bundle in `/var/www/ttc` + proxies `/predict`,`/stops`,`/health`), `ttc-api`
   (gunicorn `127.0.0.1:5000`). All enabled (survive reboot). Caddyfile: `/etc/caddy/Caddyfile`.
 - Postgres/Kafka/Spark are NOT exposed (not run on atlas; API/Caddy bind loopback only).
-
-## Current status / next step
-Phase 1: build and run the collector on `atlas` and start accumulating real JSONL data.
-Everything else depends on data existing, so this comes first.
