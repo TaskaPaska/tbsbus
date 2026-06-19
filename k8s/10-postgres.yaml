@@ -1,0 +1,65 @@
+# PostgreSQL + PostGIS — stateful, atlas-ზე (ttc/storage=true). სქემას ingest consumer ქმნის
+# startup-ზე (db.init_schema → schema.sql, CREATE EXTENSION postgis).
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: ttc
+spec:
+  clusterIP: None          # headless — StatefulSet-ის სტაბილური DNS (postgres.ttc.svc)
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: ttc
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      nodeSelector:
+        ttc/storage: "true"          # atlas
+      containers:
+        - name: postgres
+          image: postgis/postgis:16-3.4
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom: { configMapKeyRef: { name: ttc-config, key: POSTGRES_DB } }
+            - name: POSTGRES_USER
+              valueFrom: { configMapKeyRef: { name: ttc-config, key: POSTGRES_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: ttc-secret, key: POSTGRES_PASSWORD } }
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "ttc"] }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { memory: "256Mi", cpu: "100m" }
+            limits:   { memory: "640Mi" }
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

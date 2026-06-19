@@ -1,0 +1,46 @@
+# ფაზა 4 — k3s მანიფესტები. namespace + კონფიგი + secret.
+#
+# კვანძების განაწილება (RAM-რეალობა: atlas/laptops 8GB, forge 32GB):
+#   atlas      (k3s server, always-on)  -> postgres, kafka          label: ttc/storage=true
+#   forge      (32GB workhorse)         -> collector,ingest,api,spark-master,spark-worker
+#                                          labels: ttc/role=compute, ttc/spark=true
+#   laptop-1/2 (8GB, Linux VM)          -> spark-worker მხოლოდ        label: ttc/spark=true
+#
+# ლეიბლები კვანძებზე (atlas-დან):
+#   kubectl label node <atlas>  ttc/storage=true
+#   kubectl label node <forge>  ttc/role=compute ttc/spark=true
+#   kubectl label node <lap1>   ttc/spark=true
+#   kubectl label node <lap2>   ttc/spark=true
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ttc
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ttc-config
+  namespace: ttc
+data:
+  POSTGRES_DB: "ttc"
+  POSTGRES_USER: "ttc"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  KAFKA_BOOTSTRAP: "kafka:9092"
+  KAFKA_TOPIC_ARRIVALS: "ttc.arrivals"
+  KAFKA_TOPIC_POSITIONS: "ttc.positions"
+  KAFKA_GROUP: "ttc-ingest"
+---
+# Secret — placeholder-ები. რეალურ მნიშვნელობებს დააყენე kubectl-ით (არ commit-დება):
+#   kubectl -n ttc create secret generic ttc-secret \
+#     --from-literal=API_KEY=<რეალური> --from-literal=POSTGRES_PASSWORD=ttc
+# (ეს manifest მხოლოდ სტრუქტურის დოკუმენტია — apply-ის ნაცვლად ზემოთა ბრძანება ამჯობინე.)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ttc-secret
+  namespace: ttc
+type: Opaque
+stringData:
+  API_KEY: "REPLACE_ME"
+  POSTGRES_PASSWORD: "ttc"

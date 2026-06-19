@@ -1,0 +1,16 @@
+# Spark standalone (master/worker/submit ერთი image). apache/spark — JVM + spark-submit + Python.
+# applyInPandas-ს სჭირდება pandas + pyarrow worker-ებზე; postgres JDBC driver ჩაშენებულია.
+FROM apache/spark:3.5.3
+
+USER root
+# apache/spark:3.5.3 = Python 3.8 → pandas 2.0.3 ჭერი; pyarrow ვტოვებთ pip-ს ამოსარჩევად.
+RUN pip install --no-cache-dir "pandas==2.0.3" pyarrow
+# Postgres JDBC driver -> spark jars (offline submit-ისთვის, packages-ის გარეშე).
+RUN curl -fsSL -o /opt/spark/jars/postgresql-42.7.3.jar \
+      https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.3/postgresql-42.7.3.jar
+
+# feature-job + მისი იმპორტები (executor-ებზე --py-files-ით იგზავნება).
+COPY services/processing/spark_features.py services/processing/build_features.py \
+     services/processing/detect_arrivals.py /opt/app/
+WORKDIR /opt/app
+USER spark

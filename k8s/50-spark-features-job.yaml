@@ -1,0 +1,44 @@
+# განაწილებული feature-engineering Job — spark-submit cluster-ზე, შედეგი Postgres-ში (training_row).
+# client mode: driver ამ Job pod-ში; executor-ები spark-worker-ებზე (forge + 2 laptop).
+# driver.host = pod IP (k8s-ში client-mode-ის აუცილებელი კონფიგი, executor-ებმა driver უნდა მონახონ).
+#
+# გაშვება:  kubectl -n ttc create -f 50-spark-features-job.yaml   (ან apply)
+# ლოგი:    kubectl -n ttc logs job/spark-features -f
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spark-features
+  namespace: ttc
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector: { ttc/role: compute }       # driver forge-ზე
+      containers:
+        - name: spark-submit
+          image: ttc-spark:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: POD_IP
+              valueFrom: { fieldRef: { fieldPath: status.podIP } }
+          command:
+            - /opt/spark/bin/spark-submit
+            - --master
+            - spark://spark-master:7077
+            - --conf
+            - spark.driver.host=$(POD_IP)
+            - --conf
+            - spark.driver.bindAddress=0.0.0.0
+            - --py-files
+            - detect_arrivals.py,build_features.py
+            - spark_features.py
+            - --master
+            - spark://spark-master:7077
+            - --jdbc
+            - jdbc:postgresql://postgres:5432/ttc
+            - --out-table
+            - training_row
+          resources:
+            requests: { memory: "512Mi", cpu: "200m" }
+            limits:   { memory: "1Gi" }
