@@ -41,15 +41,12 @@ def parse_ts(ts: str) -> datetime:
     return datetime.fromisoformat(ts)
 
 
-def read_lanes(paths: Iterable[Path]) -> Dict[Tuple[str, str, str], Dict[str, Any]]:
-    """ვიღებთ ყველა დაუმუშავებელ ჩანაწერს და ვყრით lane-ებში (stop_id, shortName, patternSuffix) მიხედვით.
+def iter_jsonl_arrivals(paths: Iterable[Path]) -> Iterable[Dict[str, Any]]:
+    """დაუმუშავებელ JSONL-ს ნაკადად აქცევს ნორმალიზებულ realtime ჩანაწერებად.
 
-    lane არის კონკრეტული გაჩერება + კონკრეტული მარშრუტი + კონკრეტული მარშრუტის მიმართულება (patternSuffix).
-    ანუ, x მარშრუტს y მიმართულებით z გაჩერებისთვის lane-ი იქნება (z, x, y). lane-ები ერთმანეთისგან დამოუკიდებელია.
+    ერთი ჩანაწერი = ერთი მოსალოდნელი ავტობუსი ერთ poll-ში. იგივე ფორმას აბრუნებს, რასაც
+    db.iter_db_arrivals — ასე lane-ების აგების ლოგიკა ერთი რჩება ორივე წყაროსთვის.
     """
-    lanes: Dict[Tuple[str, str, str], Dict[str, Any]] = defaultdict(
-        lambda: {"headsign": "", "readings": []}
-    )
     for path in paths:
         with open(path, encoding="utf-8") as fh:
             for line in fh:
@@ -58,14 +55,37 @@ def read_lanes(paths: Iterable[Path]) -> Dict[Tuple[str, str, str], Dict[str, An
                 ts = parse_ts(rec["ts"])
                 for a in rec["payload"]:
                     if not a.get("realtime"):
-                        continue # მხოლოდ რეალურ დროში მოსვლები გვაინტერესებს, არა მხოლოდ დაგეგმილი
-                    key = (stop_id, a["shortName"], a.get("patternSuffix") or "")
-                    lane = lanes[key]
-                    lane["headsign"] = a.get("headsign", lane["headsign"])
-                    lane["readings"].append(
-                        (ts, a["realtimeArrivalMinutes"], a.get("scheduledArrivalMinutes"))
-                    )
+                        continue  # მხოლოდ რეალურ დროში მოსვლები, არა მხოლოდ დაგეგმილი
+                    yield {
+                        "ts": ts, "stop_id": stop_id, "route": a["shortName"],
+                        "pattern": a.get("patternSuffix") or "", "headsign": a.get("headsign", ""),
+                        "rt_min": a["realtimeArrivalMinutes"],
+                        "sched_min": a.get("scheduledArrivalMinutes"),
+                    }
+
+
+def lanes_from_arrivals(records: Iterable[Dict[str, Any]]) -> Dict[Tuple[str, str, str], Dict[str, Any]]:
+    """ნორმალიზებულ ჩანაწერებს ვყრით lane-ებში (stop_id, route, pattern) მიხედვით.
+
+    lane არის კონკრეტული გაჩერება + მარშრუტი + მიმართულება (patternSuffix). ანუ x მარშრუტს
+    y მიმართულებით z გაჩერებისთვის lane-ი (z, x, y). lane-ები ერთმანეთისგან დამოუკიდებელია.
+    წყარო (JSONL თუ DB) აქ მნიშვნელობა აღარ აქვს — iter_approaches თავად დაალაგებს დროით.
+    """
+    lanes: Dict[Tuple[str, str, str], Dict[str, Any]] = defaultdict(
+        lambda: {"headsign": "", "readings": []}
+    )
+    for r in records:
+        key = (r["stop_id"], r["route"], r["pattern"])
+        lane = lanes[key]
+        if r["headsign"]:
+            lane["headsign"] = r["headsign"]
+        lane["readings"].append((r["ts"], r["rt_min"], r["sched_min"]))
     return lanes
+
+
+def read_lanes(paths: Iterable[Path]) -> Dict[Tuple[str, str, str], Dict[str, Any]]:
+    """JSONL-დან lane-ების აგება (backward-compatible wrapper)."""
+    return lanes_from_arrivals(iter_jsonl_arrivals(paths))
 
 
 def iter_approaches(readings: List[Reading]):
@@ -120,8 +140,7 @@ def segment_arrivals(readings: List[Reading]) -> List[Dict[str, Any]]:
     return arrivals
 
 
-def detect(paths: List[Path]) -> List[Dict[str, Any]]:
-    lanes = read_lanes(paths)
+def detect_from_lanes(lanes: Dict[Tuple[str, str, str], Dict[str, Any]]) -> List[Dict[str, Any]]:
     out: List[Dict[str, Any]] = []
     for (stop_id, short_name, pattern), lane in lanes.items():
         for ev in segment_arrivals(lane["readings"]):
@@ -136,13 +155,34 @@ def detect(paths: List[Path]) -> List[Dict[str, Any]]:
     return out
 
 
+def detect(paths: List[Path]) -> List[Dict[str, Any]]:
+    """JSONL-დან მოსვლების დაფიქსირება (backward-compatible wrapper)."""
+    return detect_from_lanes(read_lanes(paths))
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="Detect bus arrivals from raw arrival-times snapshots.")
-    ap.add_argument("inputs", nargs="+", type=Path, help="raw arrival-times .jsonl file(s)")
+    ap.add_argument("inputs", nargs="*", type=Path, help="raw arrival-times .jsonl file(s) (--source jsonl)")
+    ap.add_argument("--source", choices=["jsonl", "db"], default="jsonl",
+                    help="საიდან წავიკითხოთ snapshot-ები (default: jsonl)")
     ap.add_argument("-o", "--output", type=Path, help="write arrivals JSONL here (default: stdout summary only)")
+    ap.add_argument("--to-db", action="store_true", help="შედეგი ჩაიწეროს arrival_event ცხრილში")
     args = ap.parse_args()
 
-    arrivals = detect(args.inputs)
+    if args.source == "db":
+        import db
+        conn = db.connect()
+        arrivals = detect_from_lanes(lanes_from_arrivals(db.iter_db_arrivals(conn)))
+    else:
+        if not args.inputs:
+            ap.error("--source jsonl მოითხოვს მინიმუმ ერთ შემავალ ფაილს")
+        arrivals = detect(args.inputs)
+
+    if args.to_db:
+        import db
+        conn = db.connect() if args.source == "jsonl" else conn
+        n = db.write_arrival_events(conn, arrivals)
+        print(f"Wrote {n} arrival_event rows -> Postgres", file=sys.stderr)
 
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

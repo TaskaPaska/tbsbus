@@ -19,7 +19,7 @@ import sys
 from datetime import timedelta
 from pathlib import Path
 
-from detect_arrivals import read_lanes, iter_approaches
+from detect_arrivals import read_lanes, iter_approaches, lanes_from_arrivals
 
 # საქართველო მუდმივად UTC+4-ია (DST არ აქვს); საათი/დღე ლოკალურ დროში გვინდა feature-ებისთვის.
 TBILISI_UTC_OFFSET_H = 4
@@ -27,8 +27,7 @@ TBILISI_UTC_OFFSET_H = 4
 MAX_LABEL_MIN = 60
 
 
-def build(paths):
-    lanes = read_lanes(paths)
+def build_from_lanes(lanes):
     rows = []
     for (stop_id, route, pattern), lane in lanes.items():
         for approach, arrival_ts in iter_approaches(lane["readings"]):
@@ -52,13 +51,26 @@ def build(paths):
     return rows
 
 
+def build(paths):
+    """JSONL-დან სასწავლო სტრიქონები (backward-compatible wrapper)."""
+    return build_from_lanes(read_lanes(paths))
+
+
 def main():
     ap = argparse.ArgumentParser(description="Build ML training rows from raw arrival-times snapshots.")
-    ap.add_argument("inputs", nargs="+", type=Path, help="raw arrival-times .jsonl file(s)")
+    ap.add_argument("inputs", nargs="*", type=Path, help="raw arrival-times .jsonl file(s) (--source jsonl)")
+    ap.add_argument("--source", choices=["jsonl", "db"], default="jsonl",
+                    help="საიდან წავიკითხოთ snapshot-ები (default: jsonl)")
     ap.add_argument("-o", "--output", type=Path, required=True, help="training CSV output path")
     args = ap.parse_args()
 
-    rows = build(args.inputs)
+    if args.source == "db":
+        import db
+        rows = build_from_lanes(lanes_from_arrivals(db.iter_db_arrivals(db.connect())))
+    else:
+        if not args.inputs:
+            ap.error("--source jsonl მოითხოვს მინიმუმ ერთ შემავალ ფაილს")
+        rows = build(args.inputs)
     if not rows:
         sys.exit("No training rows produced.")
 

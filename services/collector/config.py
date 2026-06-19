@@ -48,3 +48,10 @@ TRACKED_STOPS_FILE = Path(os.getenv("TRACKED_STOPS_FILE", COLLECTOR_DIR / "track
 
 # რამდენი გაჩერება უნდა შეირჩიოს ავტომატური სელექტორის მიერ.
 TARGET_STOP_COUNT = _int("TARGET_STOP_COUNT", 30)
+
+# --- Kafka (არასავალდებულო, opt-in) ---
+# ცარიელი = Kafka გათიშულია, collector მხოლოდ JSONL-ში წერს (ნაგულისხმევი, production-ზე atlas).
+# დაყენებისას (მაგ. "kafka:9092"), JSONL-ის *პარალელურად* აქვეყნებს topic-ებშიც.
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP", "")
+KAFKA_TOPIC_ARRIVALS = os.getenv("KAFKA_TOPIC_ARRIVALS", "ttc.arrivals")
+KAFKA_TOPIC_POSITIONS = os.getenv("KAFKA_TOPIC_POSITIONS", "ttc.positions")

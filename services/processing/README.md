@@ -40,3 +40,27 @@ python build_features.py --source db -o ../../data/processed/training.csv
 ```
 
 JSONL-დან პირდაპირ მუშაობა კვლავ შესაძლებელია (`--source jsonl <files>`) — db არ არის სავალდებულო.
+
+## Spark (ფაზა 3) — განაწილებული feature engineering
+
+`spark_features.py` იგივეს აკეთებს, რასაც `build_features.py`, ოღონდ Spark-ით განაწილებულად:
+Postgres-იდან JDBC-ით კითხულობს (partition-ებად), lane-ებს worker-ებზე ანაწილებს და თითო
+lane-ზე *იმავე* `iter_approaches` ლოგიკას უშვებს (`applyInPandas`). შედეგი ML-ისთვის იდენტურია.
+
+Spark cluster batch/on-demand-ია — compose-ის `spark` profile-ში:
+
+```bash
+# 1) cluster (master + 1 worker) ატანა:
+docker compose --profile spark up -d spark-master spark-worker   # master UI: http://localhost:8080
+
+# 2) feature-job-ის გაშვება (Postgres-იდან -> /out/training_spark CSV):
+docker compose --profile spark run --rm spark-submit
+
+# 3) cluster-ის გაჩერება (RAM-ის გასათავისუფლებლად):
+docker compose --profile spark stop spark-master spark-worker
+```
+
+დემოზე დამატებითი worker (forge/laptop) იგივე `ttc-spark` image-ით უერთდება:
+`/opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://<atlas>:7077` —
+კოდის ცვლილების გარეშე. pyspark/pandas/pyarrow + postgres JDBC driver `Dockerfile.spark`-შია
+(ჰოსტზე java/pyspark არ სჭირდება).

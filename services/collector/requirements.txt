@@ -1,2 +1,4 @@
 requests==2.32.4
 python-dotenv==1.1.1
+kafka-python-ng==2.2.3   # არასავალდებულო Kafka producer-ისთვის (იმპორტდება მხოლოდ KAFKA_BOOTSTRAP-ზე).
+                         # -ng ფორკი: ორიგინალი kafka-python Python 3.12-ზე ვერ მუშაობს (vendored six). API იგივეა (import kafka).

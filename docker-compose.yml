@@ -1,20 +1,75 @@
 # dev orchestration — ერთი ბრძანებით ასაშვები სტეკი.
-#   docker compose up --build              # collector + api (ის, რაც დღეს რეალურად მუშაობს)
-#   docker compose --profile db up          # + PostgreSQL/PostGIS (ETL ფაზისთვის)
+#   docker compose up --build              # მთლიანი pipeline: kafka + collector + ingest + api + postgres
 #
-# Kafka ჯერ არ ერთვის: collector ჯერ JSONL-ში წერს და არცერთი სერვისი broker-ს არ production-ებს —
-# 8GB კვანძზე უქმი broker-ი მხოლოდ RAM-ს ჭამდა. დაემატება მაშინ, როცა collector Kafka-ში დაიწყებს წერას.
+# ნაკადი (ფაზა 2): collector → JSONL (durable raw log) + Kafka topic → ingest consumer → Postgres
+#                  → detect_arrivals/build_features (batch, on-demand) → ML.
+# Kafka — single broker, KRaft რეჟიმი (ZooKeeper-ის გარეშე). 8GB კვანძისთვის heap შეზღუდულია.
 
 services:
-  # TTC API-ს poller -> JSONL. API_KEY collector/.env-დან.
+  # Kafka single broker, KRaft (broker+controller ერთ პროცესში, ZooKeeper-ის გარეშე).
+  kafka:
+    image: apache/kafka:3.7.1
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # ორი listener: PLAINTEXT (compose-ის შიგნით kafka:9092), PLAINTEXT_HOST (ჰოსტიდან localhost:29092).
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093,PLAINTEXT_HOST://:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      # single broker → ყველა replication factor = 1.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_HEAP_OPTS: "-Xmx512m -Xms256m"   # 8GB კვანძი — heap-ი მცირე.
+    ports:
+      - "29092:29092"          # ჰოსტიდან წვდომა (dev): localhost:29092
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # TTC API-ს poller -> JSONL (durable) + Kafka topic-ები. API_KEY collector/.env-დან.
   collector:
     build: ./services/collector
     env_file: ./services/collector/.env
     environment:
       DATA_DIR: /data
+      KAFKA_BOOTSTRAP: kafka:9092   # compose-ში Kafka ჩართულია; atlas-ზე (systemd) ეს ცვლადი არაა → JSONL only.
     volumes:
       - raw_data:/data
     mem_limit: 128m            # მხოლოდ requests-ის ციკლია; ცოტა სჭირდება (tunable).
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Kafka -> Postgres consumer. db.py services/processing-იდან (image-ში ერთად კოპირდება).
+  ingest:
+    build:
+      context: .
+      dockerfile: services/ingest/Dockerfile
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-ttc}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ttc}
+      POSTGRES_DB: ${POSTGRES_DB:-ttc}
+    mem_limit: 256m
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   # თხელი Flask REST — ცოცხალი პროგნოზებს აწვდის. მოდელი image-შია ჩაშენებული.
@@ -34,10 +89,9 @@ services:
       start_period: 10s
     restart: unless-stopped
 
-  # ETL ფაზის სამიზნე საცავი. profile-ით — default up-ი მის გარეშე მსუბუქი რჩება.
+  # მონაცემთა ნაკადის queryable საცავი (ETL/processing-ის სამიზნე).
   postgres:
     image: postgis/postgis:16-3.4
-    profiles: ["db"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ttc}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ttc}
@@ -53,6 +107,60 @@ services:
       timeout: 5s
       retries: 5
 
+  # --- Spark standalone cluster (ფაზა 3) — batch/on-demand, ამიტომ `spark` profile-ში ---
+  #   docker compose --profile spark up -d spark-master spark-worker
+  #   docker compose --profile spark run --rm spark-submit
+  # დემოზე forge/laptop worker-ი იგივე image-ით უერთდება: SPARK_MASTER=spark://<atlas>:7077.
+  spark-master:
+    build:
+      context: .
+      dockerfile: services/processing/Dockerfile.spark
+    image: ttc-spark
+    profiles: ["spark"]
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.master.Master"]
+    environment:
+      SPARK_MASTER_HOST: spark-master
+    ports:
+      - "8080:8080"   # Spark master UI
+      - "7077:7077"   # worker/submit-ის შესაერთებლად
+    mem_limit: 1g
+
+  spark-worker:
+    image: ttc-spark
+    profiles: ["spark"]
+    command: ["/opt/spark/bin/spark-class", "org.apache.spark.deploy.worker.Worker", "spark://spark-master:7077"]
+    environment:
+      SPARK_WORKER_CORES: "2"
+      SPARK_WORKER_MEMORY: 1536m
+    volumes:
+      - ./data/processed:/out   # executor აქ წერს CSV-ს (იგივე host dir, რაც spark-submit-ს)
+    depends_on: [spark-master]
+    mem_limit: 2g
+
+  # feature-job-ის გამშვები (ერთჯერადი). `run --rm spark-submit` ასრულებს და გადის.
+  spark-submit:
+    image: ttc-spark
+    profiles: ["spark"]
+    command:
+      - /opt/spark/bin/spark-submit
+      - --master
+      - spark://spark-master:7077
+      - --py-files
+      - detect_arrivals.py,build_features.py
+      - spark_features.py
+      - --master
+      - spark://spark-master:7077
+      - --jdbc
+      - jdbc:postgresql://postgres:5432/ttc
+      - --out
+      - /out/training_spark
+    environment:
+      SPARK_MASTER: spark://spark-master:7077
+    volumes:
+      - ./data/processed:/out   # გამოსავალი CSV — ჰოსტიდან შესადარებლად
+    depends_on: [spark-master, spark-worker, postgres]
+
 volumes:
   raw_data:     # collector-ის JSONL snapshot-ები
   pgdata:       # PostgreSQL მონაცემები
+  kafka_data:   # Kafka log-ები (KRaft)

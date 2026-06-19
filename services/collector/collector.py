@@ -19,6 +19,7 @@ from typing import Any, Dict, List
 import requests
 
 import config
+from kafka_sink import KafkaSink
 from ttc_client import TTCClient
 
 
@@ -65,6 +66,8 @@ class Collector:
         self.route_ids: List[str] = tracked.get("route_ids") or tracked.get("routes", [])
         self.arrivals = JsonlWriter(config.DATA_DIR / "arrival-times")
         self.positions = JsonlWriter(config.DATA_DIR / "positions")
+        # არასავალდებულო Kafka — ცარიელი bootstrap-ზე no-op (მხოლოდ JSONL).
+        self.kafka = KafkaSink(config.KAFKA_BOOTSTRAP)
         self._skip_positions: set = set()
         # 500-იანი ერორი სერვერისაც შეიძლება იყოს და ვალიდური მარშრუტის არარსებობაც. ტყუილად რომ არ გავაგზავნოთ
         # რექუესთი, ასეთი მარშრუტი ერთჯერადად გამოიტოვება, მაგრამ ვცდილობთ პერიოდულად მაინც დავუბრუნდეთ,
@@ -85,10 +88,12 @@ class Collector:
             sid = stop["id"]
             try:
                 payload = self.client.arrival_times(sid)
-                self.arrivals.write({
+                record = {
                     "ts": utc_now_iso(), "endpoint": "arrival-times",
                     "stop_id": sid, "payload": payload,
-                })
+                }
+                self.arrivals.write(record)
+                self.kafka.send(config.KAFKA_TOPIC_ARRIVALS, record, key=str(sid))
                 ok += 1
             except Exception as e:
                 print(f"  ! arrival-times stop {sid}: {e}", flush=True)
@@ -114,10 +119,12 @@ class Collector:
                     continue  # თუ ისეთი წყვილია რომელზეც ვიცით რომ არ იმუშავებს, გამოვტოვოთ
                 try:
                     payload = self.client.positions(route_id, forward=forward)
-                    self.positions.write({
+                    record = {
                         "ts": utc_now_iso(), "endpoint": "positions",
                         "route_id": route_id, "forward": forward, "payload": payload,
-                    })
+                    }
+                    self.positions.write(record)
+                    self.kafka.send(config.KAFKA_TOPIC_POSITIONS, record, key=str(route_id))
                     ok += 1
                 except requests.exceptions.HTTPError as e:
                     if e.response is not None and e.response.status_code == 500:
@@ -140,6 +147,8 @@ class Collector:
         print(f"  arrival interval={config.POLL_INTERVAL_SECONDS}s  "
               f"positions interval={config.POSITIONS_POLL_INTERVAL_SECONDS}s  "
               f"-> {config.DATA_DIR}", flush=True)
+        print(f"  kafka: {'on -> ' + config.KAFKA_BOOTSTRAP if self.kafka.enabled else 'off (JSONL only)'}",
+              flush=True)
         next_positions = 0.0
         while self._running:
             cycle_start = time.monotonic()
@@ -165,6 +174,7 @@ class Collector:
 
         self.arrivals.close()
         self.positions.close()
+        self.kafka.close()
         print("Stopped cleanly.", flush=True)
 
 

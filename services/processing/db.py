@@ -64,6 +64,32 @@ def _src_date(path: Path) -> str:
     return path.stem  # ფაილი YYYY-MM-DD.jsonl
 
 
+# ერთი collector-ის ჩანაწერი (JSONL ხაზი ან Kafka message) -> ცხრილის სტრიქონების სია.
+# src_date იღება ts-დან (ts[:10]) — collector ფაილებსაც UTC-დღით ჭრის, ამიტომ იდენტურია.
+# ამ ფუნქციებს იყენებს batch loader-იც (ქვემოთ) და Kafka consumer-იც (services/ingest).
+
+def arrival_rows_from_record(rec: Dict[str, Any]) -> List[Tuple]:
+    ts, stop_id = rec["ts"], rec["stop_id"]
+    src = ts[:10]
+    return [(
+        ts, src, stop_id, a["shortName"], a.get("headsign"),
+        a.get("patternSuffix") or "", a.get("vehicleMode"),
+        bool(a.get("realtime")), a.get("realtimeArrivalMinutes"),
+        a.get("scheduledArrivalMinutes"),
+    ) for a in rec["payload"]]
+
+
+def position_rows_from_record(rec: Dict[str, Any]) -> List[Tuple]:
+    ts, route_id, forward = rec["ts"], rec["route_id"], rec.get("forward")
+    src = ts[:10]
+    out = []
+    for v in rec["payload"]:
+        lon, lat = v.get("lon"), v.get("lat")
+        out.append((ts, src, route_id, forward, v.get("vehicleId"),
+                    lat, lon, v.get("heading"), v.get("nextStopId"), lon, lat))
+    return out
+
+
 def load_arrivals_jsonl(conn, path: Path) -> int:
     """ერთი arrival-times JSONL ფაილი -> arrival_snapshot. იდემპოტენტური იმ დღისთვის."""
     import json
@@ -74,18 +100,9 @@ def load_arrivals_jsonl(conn, path: Path) -> int:
         cur.execute("DELETE FROM arrival_snapshot WHERE src_date = %s", (src,))
         with open(path, encoding="utf-8") as fh:
             for line in fh:
-                rec = json.loads(line)
-                ts = rec["ts"]
-                stop_id = rec["stop_id"]
-                for a in rec["payload"]:
-                    rows.append((
-                        ts, src, stop_id, a["shortName"], a.get("headsign"),
-                        a.get("patternSuffix") or "", a.get("vehicleMode"),
-                        bool(a.get("realtime")), a.get("realtimeArrivalMinutes"),
-                        a.get("scheduledArrivalMinutes"),
-                    ))
-                    if len(rows) >= BATCH:
-                        inserted += _flush_arrivals(cur, rows); rows.clear()
+                rows.extend(arrival_rows_from_record(json.loads(line)))
+                if len(rows) >= BATCH:
+                    inserted += _flush_arrivals(cur, rows); rows.clear()
         if rows:
             inserted += _flush_arrivals(cur, rows)
     conn.commit()
@@ -111,20 +128,32 @@ def load_positions_jsonl(conn, path: Path) -> int:
         cur.execute("DELETE FROM vehicle_position WHERE src_date = %s", (src,))
         with open(path, encoding="utf-8") as fh:
             for line in fh:
-                rec = json.loads(line)
-                ts = rec["ts"]
-                route_id = rec["route_id"]
-                forward = rec.get("forward")
-                for v in rec["payload"]:
-                    lon, lat = v.get("lon"), v.get("lat")
-                    rows.append((ts, src, route_id, forward, v.get("vehicleId"),
-                                 lat, lon, v.get("heading"), v.get("nextStopId"), lon, lat))
-                    if len(rows) >= BATCH:
-                        inserted += _flush_positions(cur, rows); rows.clear()
+                rows.extend(position_rows_from_record(json.loads(line)))
+                if len(rows) >= BATCH:
+                    inserted += _flush_positions(cur, rows); rows.clear()
         if rows:
             inserted += _flush_positions(cur, rows)
     conn.commit()
     return inserted
+
+
+def insert_arrival_rows(conn, rows: List[Tuple]) -> int:
+    """append-only ჩაწერა (streaming consumer-ისთვის — per-day delete გარეშე)."""
+    if not rows:
+        return 0
+    with conn.cursor() as cur:
+        _flush_arrivals(cur, rows)
+    conn.commit()
+    return len(rows)
+
+
+def insert_position_rows(conn, rows: List[Tuple]) -> int:
+    if not rows:
+        return 0
+    with conn.cursor() as cur:
+        _flush_positions(cur, rows)
+    conn.commit()
+    return len(rows)
 
 
 def _flush_positions(cur, rows) -> int:
