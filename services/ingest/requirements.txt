@@ -1,0 +1,2 @@
+kafka-python-ng==2.2.3   # -ng ფორკი: ორიგინალი kafka-python Python 3.12-ზე ვერ მუშაობს (vendored six). API იგივეა.
+psycopg2-binary==2.9.9
