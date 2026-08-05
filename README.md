@@ -1,138 +1,91 @@
-# რეალურ დროში ავტობუსის მოსვლის პროგნოზირების სისტემა
+# tbsbus
 
-რეალურ დროში ავტობუსის მოძრაობის პროგნოზირების სისტემა ისტორიულ მონაცემებზე
-დაფუძნებული დისტრიბუციული Big Data და მანქანური სწავლების ტექნოლოგიებით.
+Real-time Tbilisi bus arrival predictions and a nearest-stop lookup. A personal
+navigation tool: accurate live arrival info for whichever stop I'm near, anywhere in
+the city.
 
-საბაკალავრო ნაშრომი — კავკასიის უნივერსიტეტი. სისტემა იღებს ცოცხალ მონაცემებს
-თბილისის სატრანსპორტო კომპანიის (TTC / AZRY) საჯარო API-დან, ამუშავებს მათ მცირე
-დისტრიბუციულ pipeline-ში, წვრთნის ML მოდელს ავტობუსის მოსვლის დროის
-პროგნოზირებისთვის და აწვდის პროგნოზებს ვებ-აპლიკაციით.
+Live: **https://tbsbus.com**
 
----
-
-## მიმოხილვა
-
-API არ აბრუნებს ფაქტობრივ მოსვლის დროს — ის მხოლოდ დარჩენილ წუთებს გასცემს. ამიტომ
-სისტემის ბირთვი არის **მოსვლის რეკონსტრუქცია**: გაჩერებაზე თითო (მარშრუტი,
-მიმართულება) წყვილისთვის ETA-ს კლებადი სერია ფიქსირდება და მისი 0-მდე მიახლოების
-მომენტი ითვლება ფაქტობრივ მოსვლად. ამ ლეიბლებზე იწვრთნება მოდელი, რომელიც აჯობებს
-ოპერატორის საკუთარ პროგნოზსაც და განრიგსაც.
-
-დეტალური დასაბუთება თითო ინჟინრულ გადაწყვეტილებაზე იხ.
-[`docs/decisions.md`](docs/decisions.md).
+> **Status:** actively developed, personal-use scope. This repo continues from a
+> bachelor's thesis proof-of-concept —
+> [`tbilisi-bus-stats`](https://github.com/TaskaPaska/tbilisi-bus-stats) (Caucasus
+> University), now archived — which demonstrated a distributed Big Data pipeline
+> (Kafka, Spark, k3s) for the same underlying problem. This repo inherits that
+> codebase as a starting point and is narrowing scope and architecture toward what a
+> single-user app actually needs; expect the stack described below to simplify over
+> time rather than match the thesis's distributed design.
 
 ---
 
-## არქიტექტურა
+## What it does
+
+- Live arrival predictions vs. the TTC operator's own real-time predictions and
+  schedule — the ML model beats both baselines (best so far: **1.83 min MAE** vs. the
+  operator's **3.33 min MAE**).
+- Planned next: nearest-stop lookup across every stop in the city (not just a
+  tracked training subset), route-change/disruption detection, and a personal
+  quality/health view.
+
+## Origin
+
+The API doesn't return an actual arrival time — only minutes remaining. So the core
+of the system is **arrival reconstruction**: for a (stop, route, direction), the
+predicted-minutes series is tracked as it decreases toward zero, and that point is
+taken as the actual arrival. Models are trained on labels built this way.
+
+## Architecture (inherited, being simplified)
 
 ```
 TTC / AZRY API
-     │  (poller, ზრდილობიანი — 30/60 წმ)
+     │  (polite poller — 30/60s)
      ▼
 collector ──► JSONL (durable raw log, data/raw/)
      │
      └──────► Kafka topic (ttc.arrivals / ttc.positions)   ← Apache Kafka, single broker, KRaft
                    │
                    ▼
-              ingest consumer ──► PostgreSQL 16 + PostGIS   ← queryable საცავი
+              ingest consumer ──► PostgreSQL 16 + PostGIS
                                        │
                                        ▼
                               Apache Spark (standalone cluster)
-                              მოსვლის დაფიქსირება + feature engineering
+                              arrival detection + feature engineering
                                        │
                                        ▼
-                              ML წვრთნა (scikit-learn) ──► model.joblib
+                              scikit-learn training ──► model.joblib
                                        │
                                        ▼
-                              Flask REST API  ──►  Angular ვებ-ინტერფეისი
+                              Flask REST API  ──►  Angular frontend
 ```
 
-მთელი სტეკი კონტეინერიზებულია Docker-ით; დისტრიბუციული გაშვება ხდება **k3s**
-კლასტერზე ოთხ კვანძზე (იხ. [„დისტრიბუციული გაშვება“](#დისტრიბუციული-გაშვება-k3s)).
+This is the thesis's distributed setup, sized to demonstrate Kafka/Spark/k3s for an
+academic defense. A single-user app serving one city on one small always-on box
+doesn't need that — default going forward is to simplify (Kafka and Spark are the
+most likely to go) rather than keep it out of inertia.
 
----
-
-## ტექნოლოგიური სტეკი
-
-| ფენა | ტექნოლოგია | დანიშნულება |
-|------|------------|-------------|
-| ინგესტირება | Apache Kafka (single broker, KRaft) | მონაცემთა ნაკადის ბროკერი |
-| საცავი | PostgreSQL 16 + PostGIS | ტიპიზებული, geo-მოთხოვნადი საცავი |
-| დამუშავება | Apache Spark (standalone) | დისტრიბუციული feature engineering |
-| ML | scikit-learn | Linear Regression, Random Forest, HistGradientBoosting |
-| API | Flask + gunicorn | REST პროგნოზის სერვისი |
-| Frontend | Angular + TypeScript | ვებ-ინტერფეისი რუკით |
-| ორკესტრაცია | Docker Compose (dev), k3s (კლასტერი) | კონტეინერების მართვა |
-
----
-
-## რეპოზიტორიის სტრუქტურა
+## Repo structure
 
 ```
 services/
-  collector/    # TTC API-ს poller → JSONL (+ Kafka)
+  collector/    # TTC API poller → JSONL (+ Kafka)
   ingest/       # Kafka → PostgreSQL consumer
-  processing/   # ETL, მოსვლის დაფიქსირება, feature engineering (Python + Spark)
-  ml/           # მოდელის წვრთნა და შეფასება
+  processing/   # ETL, arrival detection, feature engineering (Python + Spark)
+  ml/           # model training and evaluation
   api/          # Flask REST API
-  frontend/     # Angular აპლიკაცია
-data/raw/       # JSONL snapshot-ები (gitignored)
-k8s/            # k3s მანიფესტები (4-კვანძიანი კლასტერი)
-docs/           # decisions.md (დასაბუთებები)
+  frontend/     # Angular app
+data/raw/       # JSONL snapshots (gitignored)
+k8s/            # k3s manifests (inherited, likely to shrink or go)
 ```
 
-თითო სერვისს აქვს საკუთარი `README.md` დეტალური ინსტრუქციით.
+Each service has its own `README.md`.
 
----
-
-## მონაცემთა ნაკადი
-
-1. **შეგროვება** — `collector` ყოველ ~30 წმ-ში პოლავს ~30 თვალყურის ქვეშ მყოფ
-   გაჩერებას, ინახავს თითო snapshot-ს JSONL-ში და პარალელურად აქვეყნებს Kafka-ში.
-2. **ჩატვირთვა** — `ingest` consumer კითხულობს Kafka-დან და წერს PostgreSQL-ში
-   (idempotent, at-least-once).
-3. **დამუშავება** — Spark კითხულობს snapshot-ებს Postgres-იდან JDBC-ით, აჯგუფებს
-   lane-ებად (გაჩერება × მარშრუტი × მიმართულება) და თითო lane-ზე უშვებს მოსვლის
-   დაფიქსირების ალგორითმს → სასწავლო სტრიქონები.
-4. **წვრთნა** — `ml/train.py` წვრთნის სამ მოდელს დროის მიხედვით გაყოფით
-   (train = ადრინდელი დღეები, test = ბოლო დღე — leakage-ის თავიდან ასაცილებლად).
-5. **მიწოდება** — Flask API ტვირთავს მოდელს და გასცემს ცოცხალ პროგნოზებს.
-
----
-
-## ML მოდელი და შედეგები
-
-სამი მოდელი მზარდი სირთულით: **LinearRegression → RandomForest → HistGradientBoosting**.
-შეფასების baseline-ებია ოპერატორის საკუთარი რეალურ-დროითი პროგნოზი და განრიგი —
-მოდელმა ორივეს უნდა აჯობოს.
-
-| მაჩვენებელი | MAE (წუთი) |
-|-------------|-----------|
-| ოპერატორის baseline (`rt_min`) | ≈ 3.33 |
-| **საუკეთესო მოდელი (HistGradientBoosting)** | **≈ 1.83** |
-
-სამიზნე (MAE < 3 წთ) მიღწეულია; მოდელი აჯობებს ოპერატორის პროგნოზს ~45%-ით.
-დასაბუთება — [`docs/decisions.md` §4](docs/decisions.md).
-
----
-
-## გაშვება
-
-### dev სტეკი (Docker Compose)
+## Running it
 
 ```bash
-cp .env.example services/collector/.env   # შეავსე API_KEY
+cp .env.example services/collector/.env   # fill in API_KEY
 docker compose up --build                 # kafka + collector + ingest + api + postgres
 ```
 
-Spark-ის feature-job (on-demand):
-
-```bash
-docker compose --profile spark up -d spark-master spark-worker
-docker compose --profile spark run --rm spark-submit
-```
-
-მოდელის წვრთნა:
+Model training:
 
 ```bash
 cd services/ml && python train.py ../../data/processed/training.csv
@@ -144,42 +97,14 @@ Frontend (dev):
 cd services/frontend && npm install && npm start
 ```
 
-### სერვისები და პორტები
-
-| სერვისი | პორტი |
-|---------|-------|
+| Service | Port |
+|---------|------|
 | Flask API | `5000` (`/predict/<stop_id>`, `/stops`, `/health`) |
 | PostgreSQL | `5432` |
-| Kafka (ჰოსტიდან) | `29092` |
+| Kafka (from host) | `29092` |
 | Spark master UI | `8080` |
 
----
+## Public demo
 
-## დისტრიბუციული გაშვება (k3s)
-
-სისტემა იშლება **ოთხ ფიზიკურ კვანძზე** k3s კლასტერით (მანიფესტები `k8s/`-ში):
-
-| კვანძი | როლი |
-|--------|------|
-| `atlas` | k3s server + stateful (PostgreSQL, Kafka) |
-| `forge` | compute (collector, ingest, api, spark-master) |
-| `laptop-1`, `laptop-2` | Spark worker-ები |
-
-Spark worker გაშვებულია **DaemonSet**-ად `ttc/spark=true` კვანძებზე, ასე რომ
-feature-job ნამდვილად ნაწილდება worker-ებზე. კვანძის დამატება ხდება კოდის
-ცვლილების გარეშე (ლეიბლი + `K3S_URL` token). runbook — [`k8s/README.md`](k8s/README.md).
-
----
-
-## საჯარო დემო
-
-frontend + API ხელმისაწვდომია **https://tbsbus.com**-ზე (Cloudflare Tunnel `atlas`-დან).
-მონაცემთა ბაზა, Kafka და Spark არ ქვეყნდება — მხოლოდ ვებ-ინტერფეისი და პროგნოზის API.
-
----
-
-## დოკუმენტაცია
-
-- [`docs/decisions.md`](docs/decisions.md) — დასაბუთება თითო ინჟინრულ გადაწყვეტილებაზე.
-- `services/*/README.md` — თითო სერვისის დეტალური ინსტრუქცია.
-</content>
+**https://tbsbus.com** is served from this repo (Flask API + frontend), via a
+Cloudflare Tunnel. Postgres, Kafka, and Spark are not exposed.
