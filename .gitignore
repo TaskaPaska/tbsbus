@@ -20,8 +20,9 @@ data/processed/
 *.joblib
 *.pkl
 
-# Selected stop set is machine-generated; keep it local unless deliberately shared
+# Selected/full stop lists are machine-generated; keep local unless deliberately shared
 services/collector/tracked_stops.json
+services/collector/all_stops.json
 
 # Python
 .venv/

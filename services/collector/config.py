@@ -49,6 +49,10 @@ TRACKED_STOPS_FILE = Path(os.getenv("TRACKED_STOPS_FILE", COLLECTOR_DIR / "track
 # რამდენი გაჩერება უნდა შეირჩიოს ავტომატური სელექტორის მიერ.
 TARGET_STOP_COUNT = _int("TARGET_STOP_COUNT", 30)
 
+# ქალაქის ყველა ავტობუსის გაჩერება (არა მხოლოდ tracked ქვესიმრავლე) — აგენერირებს
+# list_all_stops.py. Frontend-ის "ჩემთან ახლოს" ძებნას ამ ფაილი ჭირდება, არა tracked_stops.json.
+ALL_STOPS_FILE = Path(os.getenv("ALL_STOPS_FILE", COLLECTOR_DIR / "all_stops.json"))
+
 # --- Kafka (არასავალდებულო, opt-in) ---
 # ცარიელი = Kafka გათიშულია, collector მხოლოდ JSONL-ში წერს (ნაგულისხმევი, production-ზე atlas).
 # დაყენებისას (მაგ. "kafka:9092"), JSONL-ის *პარალელურად* აქვეყნებს topic-ებშიც.

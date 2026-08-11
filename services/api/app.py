@@ -23,13 +23,18 @@ sys.path.insert(0, str(_COLLECTOR))
 from ttc_client import TTCClient  # noqa: E402
 
 MODEL_PATH = Path(os.getenv("MODEL_PATH", Path(__file__).resolve().parents[1] / "ml" / "model.joblib"))
-# დაფარული გაჩერებების სია (frontend-ის picker/map-ისთვის) — collector-ის შერჩევაა ერთადერთი წყარო.
-STOPS_FILE = Path(os.getenv("TRACKED_STOPS_FILE", _COLLECTOR / "tracked_stops.json"))
+# ქალაქის ყველა გაჩერება (list_all_stops.py) — frontend-ის ძებნა/რუკა/"ჩემთან ახლოს"-ისთვის.
+# predict.py-ს stop_id კატეგორიად აღიქვამს და unseen მნიშვნელობებს "missing"-ზე მიაქცევს, ასე რომ
+# /predict მუშაობს ნებისმიერი ნამდვილი TTC stop_id-სთვის, არა მხოლოდ tracked ქვესიმრავლისთვის.
+ALL_STOPS_FILE = Path(os.getenv("ALL_STOPS_FILE", _COLLECTOR / "all_stops.json"))
+# fallback, სანამ list_all_stops.py არ გაშვებულა — tracked ქვესიმრავლე მაინც სჯობს ცარიელს.
+TRACKED_STOPS_FILE = Path(os.getenv("TRACKED_STOPS_FILE", _COLLECTOR / "tracked_stops.json"))
 
 
 def _load_stops():
-    """tracked_stops.json-დან frontend-ისთვის საჭირო ველებს ვტვირთავთ (id, name, lat, lon, routes)."""
-    with open(STOPS_FILE, encoding="utf-8") as f:
+    """გაჩერებების სია frontend-ისთვის (id, name, lat, lon, routes) — მთელი ქალაქი, თუ არსებობს."""
+    stops_file = ALL_STOPS_FILE if ALL_STOPS_FILE.exists() else TRACKED_STOPS_FILE
+    with open(stops_file, encoding="utf-8") as f:
         raw = json.load(f).get("stops", [])
     return [{"id": s["id"], "name": s["name"], "lat": s["lat"], "lon": s["lon"],
              "routes": s.get("routes", [])} for s in raw]

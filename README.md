@@ -22,9 +22,9 @@ Live: **https://tbsbus.com**
 - Live arrival predictions vs. the TTC operator's own real-time predictions and
   schedule — the ML model beats both baselines (best so far: **1.83 min MAE** vs. the
   operator's **3.33 min MAE**).
-- Planned next: nearest-stop lookup across every stop in the city (not just a
-  tracked training subset), route-change/disruption detection, and a personal
-  quality/health view.
+- Nearest-stop lookup across every stop in the city (not just the tracked training
+  subset) — geolocate and get predictions for whichever stop you're near.
+- Planned next: route-change/disruption detection and a personal quality/health view.
 
 ## Origin
 
@@ -82,7 +82,8 @@ Each service has its own `README.md`.
 
 ```bash
 cp .env.example services/collector/.env   # fill in API_KEY
-docker compose up --build                 # kafka + collector + ingest + api + postgres
+cd services/collector && python list_all_stops.py   # once, generates all_stops.json
+cd ../.. && docker compose up --build                # kafka + collector + ingest + api + postgres
 ```
 
 Model training:

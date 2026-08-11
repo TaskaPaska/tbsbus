@@ -5,7 +5,9 @@ export interface Stop {
   name: string;
   lat: number;
   lon: number;
-  routes: string[];
+  // ცარიელია ქალაქის სრული სიის გაჩერებებისთვის (routes-density scan მხოლოდ tracked
+  // ქვესიმრავლისთვის ხდება — იხ. list_all_stops.py vs. select_stops.py).
+  routes?: string[];
 }
 
 export interface Arrival {

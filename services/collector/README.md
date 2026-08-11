@@ -6,7 +6,11 @@ Nothing downstream exists until data does, so this runs first and always-on (on 
 ## Files
 - `ttc_client.py` — thin TTC API client.
 - `probe_api.py` — one-shot live check of endpoint shapes (run first, after setting the key).
-- `select_stops.py` — auto-selects the ~30 busiest stops by route density → `tracked_stops.json`.
+- `select_stops.py` — auto-selects the ~30 busiest stops by route density → `tracked_stops.json`
+  (training/collection subset — this is what `collector.py` polls continuously).
+- `list_all_stops.py` — dumps every BUS stop citywide (one cheap `stops()` call, no route
+  scan) → `all_stops.json`. Used by the API's `/stops` for nearest-stop lookup — not polled
+  continuously, just refreshed occasionally (stops rarely change).
 - `collector.py` — the polling loop: arrival-times per stop + positions per route → JSONL.
 - `config.py` — all tunables (env-overridable).
 
@@ -27,9 +31,13 @@ pip install -r requirements.txt
 cp .env.example .env          # then put your API_KEY in it
 
 python probe_api.py           # 1. confirm endpoint shapes live
-python select_stops.py        # 2. pick stops -> tracked_stops.json
-python collector.py           # 3. start collecting (Ctrl-C to stop)
+python select_stops.py        # 2. pick training stops -> tracked_stops.json
+python list_all_stops.py      # 3. full city stop list -> all_stops.json (for nearest-stop lookup)
+python collector.py           # 4. start collecting (Ctrl-C to stop)
 ```
+
+Re-run `list_all_stops.py` occasionally (e.g. monthly, or after a known TTC route change) to
+pick up new/removed stops — it's not part of the continuous collection loop.
 
 ## Tunables (env / `.env`)
 | var | default | meaning |

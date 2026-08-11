@@ -10,8 +10,13 @@
 
 ## endpoints
 - `GET /health` — სტატუსი + ჩატვირთული მოდელის ფაილი.
+- `GET /stops` — გაჩერებების სია (id, name, lat, lon, routes) frontend-ის ძებნა/რუკა/"ჩემთან
+  ახლოს"-ისთვის. კითხულობს `services/collector/all_stops.json`-ს (ქალაქის ყველა BUS გაჩერება,
+  `list_all_stops.py`-ით გენერირებული); თუ ის არ არსებობს, უკან ვარდება `tracked_stops.json`-ზე.
 - `GET /predict/<stop_id>` — per-ავტობუს პროგნოზი ერთი გაჩერებისთვის:
   `predicted_min` (მოდელი), `operator_min` და `scheduled_min` (baseline-ები), `route`, `headsign`.
+  მუშაობს ნებისმიერი ნამდვილი TTC stop_id-სთვის, არა მხოლოდ tracked ქვესიმრავლისთვის — მოდელს
+  stop_id კატეგორიული feature-ია და unseen მნიშვნელობებს "missing"-ზე მიაქცევს.
 
 ## გაშვება (dev)
 ```bash

@@ -1,12 +1,27 @@
 # CLAUDE.md
 
 ## Project
-Real-time bus arrival prediction for Tbilisi public transport (bachelor's thesis,
-Caucasus University). The system ingests live data from the Tbilisi Transport Company
-(TTC / AzRy) API, processes it through a small distributed pipeline, trains ML models to
-predict bus arrival times, and serves predictions via a web app. AI coding tools were
-used during development; the system design, engineering decisions, and analysis are the
-author's own.
+Real-time bus arrival prediction and nearest-stop lookup for Tbilisi, Georgia — a
+personal navigation tool, live at **https://tbsbus.com**. The system ingests live data
+from the Tbilisi Transport Company (TTC / AzRy) API, trains ML models to predict bus
+arrival times, and serves predictions via a web app. AI coding tools were used during
+development; the system design, engineering decisions, and analysis are the author's
+own.
+
+**Origin:** this repo continues from a bachelor's thesis proof-of-concept
+(`tbilisi-bus-stats`, Caucasus University, now archived), which demonstrated a
+distributed Big Data pipeline (Kafka, Spark, k3s) for the same underlying problem. This
+repo inherited that codebase and is a standalone, actively developed successor — scope
+has narrowed from "thesis demonstration" to "personal-use app," and the architecture is
+being simplified accordingly rather than kept at thesis scale out of inertia. See
+`NEXT_APP_PLAN.md` (gitignored, local-only living doc) for the current working plan and
+sequencing; treat it as the source of truth for "what's next" over this file's older
+framing where they conflict.
+
+**Current scope, concretely:** one job — accurate live arrival info for whichever stop
+the user is near, anywhere in the city. Not a multi-user product (yet). Two planned but
+not-yet-started features: route-change/disruption detection, and a personal
+stats/health view (collector uptime, data freshness, model-vs-operator accuracy).
 
 ## Hardware / nodes
 - `atlas` — Lenovo ThinkCentre M720q, i3-8100T, 8GB RAM. Ubuntu Server, headless, always
@@ -20,18 +35,28 @@ author's own.
 **Resource reality:** nodes are RAM-constrained (8GB). Keep every component small. Always
 prefer lightweight implementations over "production" defaults.
 
-## Stack (decided — do NOT substitute heavier alternatives)
+## Stack
 - Language: Python 3.11+
-- Ingestion: Apache Kafka, **single broker, KRaft mode** (no ZooKeeper). Not multi-broker.
-- Processing: Apache Spark, **small standalone cluster** (1 master + 1-2 workers), small executors.
-- Storage: PostgreSQL 16 + PostGIS, single instance.
+- Storage: PostgreSQL 16 + PostGIS, single instance. Not going anywhere.
 - ML: scikit-learn (Linear Regression, Random Forest, Gradient Boosting) first;
-  Keras/TensorFlow LSTM last, only if time allows.
+  Keras/TensorFlow LSTM last, only if time allows. Best so far: 1.83 min MAE vs. the
+  operator's own 3.33 min MAE.
 - API: Flask (thin REST service).
-- Frontend: Angular (minimal — 1-3 components; do not gold-plate).
-- Orchestration: **k3s** (lightweight Kubernetes), added AFTER the pipeline works. Not kubeadm.
-- Dev orchestration: **Docker Compose first**; port to k3s later.
-- Containers: Docker.
+- Frontend: Angular (minimal — do not gold-plate).
+- Containers: Docker / Docker Compose for dev orchestration.
+
+**Inherited from the thesis, now considered simplification candidates rather than fixed
+decisions** — kept only where there's a real reason (reliability, or genuine interest in
+keeping the skill sharp), not by default:
+- Apache Kafka (single broker, KRaft mode) — likely to be dropped; collector → Postgres
+  directly is enough at personal-use scale. No real multi-consumer/replay need yet.
+- Apache Spark (small standalone cluster) — very likely unnecessary; single city, single
+  box, this is DuckDB/Polars/pandas-sized data indefinitely at personal-use volume.
+- k3s — fewer moving parts favors plain systemd/docker-compose on a solo-maintained
+  always-on box (`atlas`).
+
+Do not silently re-introduce or expand these without checking `NEXT_APP_PLAN.md` first —
+the direction is to shrink this list, not grow it.
 
 ## Data source
 Tbilisi Transport Company (TTC / AzRy) API — the backend behind the official Tbilisi
@@ -72,25 +97,37 @@ reconstructed:
   day. Zero setup — nothing should block data collection from starting.
 - Phase 2: ETL JSONL -> PostgreSQL; Spark reads from there.
 
-## Repo structure
+## Repo structure (actual, current)
 ```
 /
   CLAUDE.md
   README.md
-  docker-compose.yml          # dev orchestration (added once services exist)
+  NEXT_APP_PLAN.md            # gitignored, local-only — living plan, check first
+  docker-compose.yml          # kafka + collector + ingest + api + postgres
   .env.example                # documents required env vars; never commit real secrets
   services/
-    collector/                # polls TTC API -> JSONL (then -> Kafka)
-    processing/               # Spark jobs: clean, feature engineering
-    ml/                       # training + evaluation (sklearn, keras)
-    api/                      # Flask REST API
+    collector/                # polls TTC API -> JSONL (+ Kafka)
+    ingest/                   # Kafka -> PostgreSQL consumer
+    processing/               # ETL, arrival detection, feature engineering (Python + Spark)
+    ml/                       # training + evaluation (sklearn)
+    api/                      # Flask REST API (tracked-stops list + predictions)
     frontend/                 # Angular app
   data/
     raw/                      # JSONL snapshots (gitignored)
-  k8s/                        # k3s manifests (added later)
-  notebooks/                  # exploratory analysis
-  docs/                       # documentation
+  k8s/                        # k3s manifests (inherited from thesis; simplification candidate)
+  docs/                       # documentation, figures
 ```
+
+## Current focus
+Per `NEXT_APP_PLAN.md`'s sequencing: nearest-stop lookup using the **full city stop
+list** (all TTC stops, via the `stops` endpoint) is the app's core not-yet-built
+feature — today `/stops` in `services/api/app.py` only serves the curated ~20-40 stop
+training subset (`services/collector/tracked_stops.json`). Distinguish two different
+problems: loading/showing all stops (cheap, one call) vs. continuously polling
+`arrivalTimes` for all of them (expensive, rate-limited, and `atlas` is RAM-constrained
+— do not naively scale the tracked-subset poll loop to every stop). Current plan:
+on-demand live fetch for "the stop the user is at right now," keeping the curated
+subset for historical/ML/disruption-baseline data.
 
 ## Conventions
 - One virtualenv per Python service (`.venv`), pinned `requirements.txt`.
@@ -99,9 +136,12 @@ reconstructed:
 - Keep services small and independently runnable. Favor clarity over cleverness.
 
 ## Commands
-(Fill in as components are built, e.g.:)
-- Run collector: `cd services/collector && python collector.py`
-- Dev stack: `docker compose up`
+- Dev stack: `cp .env.example services/collector/.env` (fill in `API_KEY`), then
+  `docker compose up --build` — kafka + collector + ingest + api + postgres.
+- Run collector alone: `cd services/collector && python collector.py`
+- Train model: `cd services/ml && python train.py ../../data/processed/training.csv`
+- Frontend dev: `cd services/frontend && npm install && npm start`
+- API endpoints: `GET /health`, `GET /stops`, `GET /predict/<stop_id>`.
 
 ## Public demo exposure (atlas → Cloudflare Tunnel)
 Frontend + API are exposed at **https://tbsbus.com** via a Cloudflare Tunnel running on

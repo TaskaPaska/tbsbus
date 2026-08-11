@@ -37,7 +37,7 @@ import { distanceMeters } from './stop.service';
         <span class="pin" [class.on]="s.id === selectedId"><i></i></span>
         <span class="info">
           <span class="name">{{ s.name }}</span>
-          <span class="meta">{{ s.routes.length }} მარშრუტი</span>
+          <span class="meta" *ngIf="s.routes?.length">{{ s.routes!.length }} მარშრუტი</span>
         </span>
         <span class="check" *ngIf="s.id === selectedId">✓</span>
       </li>
