@@ -4,6 +4,7 @@ import {
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import * as L from 'leaflet';
+import 'leaflet.markercluster';
 import { Stop } from './models';
 import { distanceMeters } from './stop.service';
 
@@ -100,6 +101,10 @@ export class StopPickerComponent implements AfterViewInit, OnChanges {
   geoError = '';
 
   private map?: L.Map;
+  // ქალაქის მთელი გაჩერებების სია (ათასობით) ცალკეული markers-ით ჩუმად "ცოცხავს" რუკას —
+  // clustering (leaflet.markercluster) ინახავს UI-ს სწრაფად ისე, რომ curated ~30 გაჩერების
+  // შემთხვევაშიც ისევ ცალკეულ markers-ად "იშლება" ახლოს ზუმზე.
+  private clusterGroup?: L.MarkerClusterGroup;
   private markers = new Map<string, L.CircleMarker>();
 
   ngOnChanges(): void {
@@ -111,6 +116,8 @@ export class StopPickerComponent implements AfterViewInit, OnChanges {
     // თბილისზე ცენტრირებული რუკა, უფასო OSM tile-ები (API key-ის გარეშე).
     this.map = L.map(this.mapEl.nativeElement, { attributionControl: false }).setView([41.7151, 44.8271], 12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(this.map);
+    this.clusterGroup = L.markerClusterGroup({ maxClusterRadius: 60, disableClusteringAtZoom: 17 });
+    this.map.addLayer(this.clusterGroup);
     this.drawMarkers();
   }
 
@@ -120,14 +127,15 @@ export class StopPickerComponent implements AfterViewInit, OnChanges {
   }
 
   private drawMarkers(): void {
-    if (!this.map) { return; }
-    this.markers.forEach(m => m.remove());
+    if (!this.map || !this.clusterGroup) { return; }
+    this.clusterGroup.clearLayers();
     this.markers.clear();
     for (const s of this.stops) {
       const m = L.circleMarker([s.lat, s.lon], this.markerStyle(s.id === this.selectedId))
-        .addTo(this.map!).bindTooltip(s.name);
+        .bindTooltip(s.name);
       m.on('click', () => this.select(s));
       this.markers.set(s.id, m);
+      this.clusterGroup.addLayer(m);
     }
   }
 
@@ -140,7 +148,13 @@ export class StopPickerComponent implements AfterViewInit, OnChanges {
   select(s: Stop): void {
     this.selectedId = s.id;
     this.markers.forEach((m, id) => m.setStyle(this.markerStyle(id === s.id)));
-    this.map?.panTo([s.lat, s.lon]);
+    const marker = this.markers.get(s.id);
+    if (marker && this.clusterGroup) {
+      // თუ marker კლასტერშია "დამალული", ჯერ ზუმავს/შლის კლასტერს და მერე პანავს.
+      this.clusterGroup.zoomToShowLayer(marker, () => this.map?.panTo([s.lat, s.lon]));
+    } else {
+      this.map?.panTo([s.lat, s.lon]);
+    }
     this.stopSelected.emit(s);
   }
 
