@@ -1,0 +1,12 @@
+{
+  "name": "TBS·Bus",
+  "short_name": "TBS·Bus",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#161826",
+  "theme_color": "#161826",
+  "icons": [
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

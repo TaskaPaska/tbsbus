@@ -7,7 +7,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#161826">
   <meta name="description" content="Tbilisi bus arrival predictions — a model trained on collected TTC data.">
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <!-- SVG for modern browsers (crisp at any size), .ico as the fallback; apple-touch-icon
+       and the manifest cover "add to home screen" on iOS and Android. -->
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <!-- ?v=2: Cloudflare caches /favicon.ico for 4h, so the query makes browsers loading
+       this page fetch the new icon immediately rather than after the TTL expires. -->
+  <link rel="icon" type="image/x-icon" href="favicon.ico?v=2" sizes="16x16 32x32 48x48 64x64">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
   <!-- Inter — ლათინური/ციფრები (დიზაინის შრიფტი); Noto Sans Georgian — ქართული. -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
