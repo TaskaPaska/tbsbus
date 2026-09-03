@@ -42,7 +42,8 @@
             "index": "src/index.html",
             "browser": "src/main.ts",
             "allowedCommonJsDependencies": [
-              "leaflet"
+              "leaflet",
+              "leaflet.markercluster"
             ],
             "polyfills": [
               "zone.js"
@@ -72,7 +73,7 @@
                 },
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "4kB",
+                  "maximumWarning": "6kB",
                   "maximumError": "8kB"
                 }
               ],

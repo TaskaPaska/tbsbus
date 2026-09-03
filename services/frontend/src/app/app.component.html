@@ -1,19 +1,126 @@
-<header>
+<header class="top">
   <div class="brand">
-    <div class="logo">TBS Bus</div>
-    <div class="sub">ავტობუსის პროგნოზი</div>
+    <span class="mark">TBS<span class="dot">·</span>Bus</span>
+    <span class="tagline">{{ i18n.t().tagline }}</span>
   </div>
-  <div class="ai-pill">✦ AI</div>
+
+  <div class="live" *ngIf="stops.length">
+    <span class="pulse"></span>
+    <span class="num">{{ stops.length }}</span>&nbsp;<span>{{ i18n.t().stops }}</span>
+  </div>
+
+  <div class="seg" role="group" aria-label="Language">
+    <button type="button" class="seg-opt" [class.on]="i18n.lang() === 'ka'"
+            (click)="setLang('ka')">ქარ</button>
+    <button type="button" class="seg-opt" [class.on]="i18n.lang() === 'en'"
+            (click)="setLang('en')">EN</button>
+  </div>
 </header>
 
-<main>
-  <p class="load-error" *ngIf="error && !selected">⚠ {{ error }}</p>
+<div class="layout">
+  <aside class="side" [class.hidden-mobile]="selected">
+    <div class="side-top">
+      <div class="search-row">
+        <input class="input" type="search" [(ngModel)]="query" (ngModelChange)="onQuery()"
+               [placeholder]="i18n.t().search" [attr.aria-label]="i18n.t().search" />
+        <button class="btn btn-secondary locate" type="button" (click)="locate()" [disabled]="locating">
+          <span aria-hidden="true">◎</span>
+          <span class="locate-text">{{ locating ? i18n.t().locating : i18n.t().locate }}</span>
+        </button>
+      </div>
 
-  <app-stop-picker [stops]="stops" (stopSelected)="onStopSelected($event)"></app-stop-picker>
+      <div class="seg tabs" role="group">
+        <button type="button" class="seg-opt" [class.on]="tab === 'nearby'"
+                (click)="setTab('nearby')">{{ i18n.t().nearby }}</button>
+        <button type="button" class="seg-opt" [class.on]="tab === 'fav'"
+                (click)="setTab('fav')">{{ i18n.t().favorites }} <span class="fav-count"
+                *ngIf="favorites.list().length">{{ favorites.list().length }}</span></button>
+      </div>
 
-  <app-arrivals [stop]="selected" [arrivals]="arrivals" [loading]="loading" [error]="error"></app-arrivals>
-</main>
+      <p class="alert" *ngIf="geoError">{{ geoError }}</p>
+      <p class="alert" *ngIf="loadError">{{ loadError }}</p>
 
-<footer>
-  თბილისის {{ stops.length }} გაჩერება · პროგნოზი მხოლოდ realtime რეისებზე · <strong>დემო</strong>
-</footer>
+      <div class="note" *ngIf="showNote">
+        <span>{{ i18n.t().modelNote }}</span>
+        <button class="btn btn-ghost note-x" type="button" (click)="showNote = false"
+                aria-label="close">✕</button>
+      </div>
+    </div>
+
+    <div class="list scroll">
+      <p class="empty" *ngIf="tab === 'fav' && !visible.length">
+        {{ i18n.t().noFavorites }}<br /><span class="hint">{{ i18n.t().noFavoritesHint }}</span>
+      </p>
+      <p class="empty" *ngIf="tab === 'nearby' && !visible.length && stops.length">
+        {{ i18n.t().noResults }}
+      </p>
+
+      <div class="card stop-card" *ngFor="let s of visible; trackBy: trackStop"
+           [class.active]="selected?.id === s.id" (click)="select(s)">
+        <div class="stop-head">
+          <div class="stop-id">
+            <div class="stop-name">{{ s.name }}</div>
+            <div class="stop-meta" *ngIf="meta(s)">{{ meta(s) }}</div>
+          </div>
+          <button class="btn btn-ghost star" type="button" (click)="toggleFav(s, $event)"
+                  [class.on]="favorites.has(s.id)"
+                  [attr.aria-label]="favorites.has(s.id) ? i18n.t().removeFavorite : i18n.t().addFavorite">
+            {{ favorites.has(s.id) ? '★' : '☆' }}
+          </button>
+        </div>
+
+        <p class="row-status" *ngIf="store.get(s.id).loading">{{ i18n.t().loading }}</p>
+        <p class="row-status" *ngIf="!store.get(s.id).loading && store.get(s.id).at && !store.get(s.id).arrivals.length">
+          {{ i18n.t().noArrivals }}
+        </p>
+        <app-arrival-rows [arrivals]="store.get(s.id).arrivals.slice(0, 3)"></app-arrival-rows>
+      </div>
+    </div>
+  </aside>
+
+  <section class="mapwrap">
+    <app-map [stops]="stops" [selectedId]="selected?.id ?? null" [userPos]="userPos"
+             (stopPicked)="select($event)"></app-map>
+
+    <div class="map-chip">
+      <span class="num">{{ stops.length }}</span>&nbsp;<span>{{ i18n.t().stops }}</span>
+      <span class="sep">·</span>
+      <span>{{ i18n.t().updated }} <span class="num">{{ clock }}</span></span>
+    </div>
+
+    <div class="detail" *ngIf="selected as sel">
+      <div class="detail-head">
+        <div class="detail-id">
+          <div class="kicker">{{ i18n.t().stopWord }}</div>
+          <div class="detail-name">{{ sel.name }}</div>
+          <div class="stop-meta" *ngIf="meta(sel)">{{ meta(sel) }}</div>
+        </div>
+        <button class="btn btn-ghost star" type="button" (click)="toggleFav(sel, $event)"
+                [class.on]="favorites.has(sel.id)">
+          {{ favorites.has(sel.id) ? '★' : '☆' }}
+        </button>
+        <button class="btn btn-secondary" type="button" (click)="closeDetail()"
+                aria-label="close">✕</button>
+      </div>
+
+      <div class="rule"></div>
+
+      <div class="detail-body scroll">
+        <p class="row-status" *ngIf="store.get(sel.id).loading">{{ i18n.t().loading }}</p>
+        <p class="alert" *ngIf="store.get(sel.id).error">{{ i18n.t().predictError }}</p>
+        <p class="row-status"
+           *ngIf="!store.get(sel.id).loading && !store.get(sel.id).error && !store.get(sel.id).arrivals.length">
+          {{ i18n.t().noArrivals }}
+        </p>
+        <app-arrival-rows [arrivals]="store.get(sel.id).arrivals" [showBars]="false"></app-arrival-rows>
+      </div>
+
+      <div class="detail-foot">
+        <span class="foot-note">{{ i18n.t().modelNoteShort }}</span>
+        <button class="btn btn-secondary" type="button" (click)="refreshSelected()">
+          {{ i18n.t().refresh }}
+        </button>
+      </div>
+    </div>
+  </section>
+</div>

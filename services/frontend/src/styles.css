@@ -1,49 +1,170 @@
-/* გლობალური palette — Claude Design „Aqua / glassy" ვარიანტი.
-   ცვლადები :root-შია, რომ scoped component-ებმაც გამოიყენონ. */
+/* გლობალური თემა — "Nocturne" (Claude Design-ის handoff bundle-იდან, ds/styles.css).
+   ტოკენები :root-შია, რომ scoped კომპონენტებმაც გამოიყენონ. */
+
 :root {
-  --geo: 'Noto Sans Georgian', system-ui, sans-serif;
-  --mono: 'Space Mono', monospace;
+  --bg: #161826;
+  --surface: #232532;
+  --surface-2: #1b1d2b;
+  --text: #e9e9ed;
+  --divider: color-mix(in srgb, #e9e9ed 16%, transparent);
 
-  --bg1: #eef7f5;
-  --bg2: #e0eeeb;
-  --ink: #0f1f1c;
-  --ink2: #28332f;
-  --muted: #5b6b67;
-  --muted2: #7a8a86;
-  --faint: #90a09c;
+  --accent: #9184d9;
+  --accent-100: #f5f4ff;
+  --accent-300: #d2cefd;
+  --accent-400: #b5abfc;
+  --accent-700: #5d5294;
+  --accent-900: #2b2741;
 
-  --green1: #00c99a;
-  --green2: #00a583;
-  --green-d: #009d7d;
-  --green-ink: #0f7a63;
-  --green-border: #00b38b;
+  --n-400: #b2b6ca;
+  --n-500: #9397ab;
+  --n-600: #75798c;
+  --n-700: #595d6c;
+  --n-800: #3f424d;
+  --n-900: #292b31;
 
-  --card: rgba(255, 255, 255, 0.85);
-  --card-soft: rgba(255, 255, 255, 0.72);
-  --card-border: rgba(255, 255, 255, 0.95);
+  --muted: rgba(233, 233, 237, 0.7);
+  --muted-2: rgba(233, 233, 237, 0.45);
+  --muted-3: rgba(233, 233, 237, 0.28);
 
-  --badge1: #2b3a37;
-  --badge2: #1b2522;
+  --ok: #7fd1a8;
+  --warn: #e5b567;
+  --danger: #e58b8b;
 
-  --ttc-bg: #eef2f1;
-  --ttc-border: #e0e8e6;
-  --ttc-ink: #475a56;
-  --ttc-lbl: #94a3a0;
+  /* Inter ლათინურისთვის/ციფრებისთვის, Noto Sans Georgian — ქართულისთვის. */
+  --font: 'Inter', 'Noto Sans Georgian', system-ui, -apple-system, sans-serif;
 
-  --grad-green: linear-gradient(var(--green1), var(--green2));
-  --shadow-card: 0 16px 32px -20px rgba(20, 60, 55, 0.5), 0 1px 0 0 rgba(255, 255, 255, 0.95) inset;
+  --r-sm: 5px;
+  --r-md: 8px;
+  --r-lg: 14px;
+
+  --shadow-sm: 0 0 0 1px var(--n-800);
+  --shadow-md: 0 0 0 1px var(--n-700), 0 6px 18px rgba(0, 0, 0, 0.55);
+  --shadow-lg: 0 0 0 1px var(--n-500), 0 16px 40px rgba(0, 0, 0, 0.65);
 }
 
-* { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body {
   margin: 0;
-  padding: 0;
-  min-height: 100vh;
-  font-family: var(--geo);
-  color: var(--ink);
-  background: linear-gradient(var(--bg1), var(--bg2)) fixed;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Leaflet zoom ღილაკები palette-ში */
-.leaflet-bar a { color: var(--ink2); }
+body { overscroll-behavior-y: none; }
+
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+
+.num { font-variant-numeric: tabular-nums; }
+
+/* — ღილაკები — */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  cursor: pointer; font-family: inherit; font-weight: 500; font-size: 14px; line-height: 1.2;
+  color: var(--text); background: transparent;
+  border: 1px solid transparent; border-radius: var(--r-md);
+  padding: 6px 10px;
+}
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary { color: var(--accent); border-color: var(--accent); }
+.btn-primary:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.btn-secondary { border-color: var(--divider); }
+.btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 7%, transparent); }
+.btn-ghost { color: var(--accent); padding-inline: 4px; }
+.btn-ghost:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+/* — შენატანი — */
+.input {
+  width: 100%; min-height: 38px; padding: 7px 11px;
+  font: inherit; font-size: 14px; color: var(--text); caret-color: var(--accent);
+  background: var(--surface);
+  border: 1px solid var(--divider); border-radius: var(--r-md);
+}
+.input::placeholder { color: var(--muted-2); }
+.input:hover { border-color: color-mix(in srgb, var(--text) 45%, transparent); }
+.input:focus-visible { border-color: var(--accent); outline-offset: 0; }
+
+/* — სეგმენტური გადამრთველი — */
+.seg {
+  display: inline-flex; overflow: hidden;
+  border: 1px solid var(--divider); border-radius: var(--r-md);
+}
+.seg-opt {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 6px 12px; font-size: 13px; cursor: pointer; user-select: none;
+  color: var(--muted); background: transparent; border: 0; font-family: inherit;
+}
+.seg-opt + .seg-opt { border-left: 1px solid var(--divider); }
+.seg-opt.on { color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.seg-opt:not(.on):hover { background: color-mix(in srgb, var(--text) 7%, transparent); }
+
+/* — ბარათი — */
+.card {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 14px; border-radius: var(--r-md); background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+/* — მარშრუტის ნომრის ნიშანი — */
+.route-badge {
+  flex: none; min-width: 40px; text-align: center;
+  padding: 3px 8px; border-radius: var(--r-sm);
+  background: var(--accent-900); color: var(--accent-300);
+  font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums;
+}
+
+.kicker {
+  font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted-2);
+}
+
+/* — გადახვევა — */
+.scroll { overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--n-800) transparent; }
+.scroll::-webkit-scrollbar { width: 8px; }
+.scroll::-webkit-scrollbar-thumb { background: var(--n-800); border-radius: 4px; }
+.scroll::-webkit-scrollbar-track { background: transparent; }
+
+/* — Leaflet-ის მუქ თემაზე მორგება —
+   უფასო, გასაღების გარეშე მუქი basemap ვეღარ მოიძებნა (CARTO-მ API key მოითხოვა და tile-ებს
+   "API KEY REQUIRED" წარწერით აბრუნებს), ამიტომ OSM-ის ჩვეულებრივ ღია tile-ებს ვიღებთ და
+   CSS-ის ფილტრით ვაქცევთ მუქად: invert + hue-rotate ფერებს ინარჩუნებს (წყალი ლურჯი რჩება,
+   არა ნარინჯისფერი), saturate/brightness კი დანარჩენს დიზაინის ფონს უსადაგებს. */
+.leaflet-tile-pane {
+  filter: invert(1) hue-rotate(180deg) brightness(0.86) contrast(0.88) saturate(0.28);
+}
+.leaflet-container { background: #101119; font-family: var(--font); }
+.leaflet-control-attribution {
+  background: rgba(22, 24, 38, 0.82) !important;
+  color: var(--muted-2) !important;
+  font-size: 10px !important;
+  padding: 2px 6px !important;
+}
+.leaflet-control-attribution a { color: var(--muted) !important; }
+.leaflet-bar { border: 0 !important; box-shadow: 0 0 0 1px var(--n-800) !important; }
+.leaflet-bar a {
+  background: rgba(22, 24, 38, 0.9) !important; color: var(--text) !important;
+  border-bottom-color: var(--n-800) !important;
+}
+.leaflet-bar a:hover { background: var(--n-900) !important; }
+.leaflet-tooltip {
+  background: rgba(22, 24, 38, 0.92) !important; color: var(--text) !important;
+  border: 0 !important; box-shadow: 0 0 0 1px var(--n-800) !important;
+  font-size: 11px !important; padding: 3px 7px !important;
+}
+.leaflet-tooltip::before { display: none !important; }
+
+/* კლასტერების ფერები — ნაგულისხმევი მწვანე/ყვითელი დიზაინს ეწინააღმდეგება. */
+.marker-cluster {
+  background: color-mix(in srgb, var(--accent) 28%, transparent) !important;
+  color: var(--accent-100) !important;
+}
+.marker-cluster div {
+  background: color-mix(in srgb, var(--accent) 62%, transparent) !important;
+  color: var(--accent-100) !important;
+  font: 500 11px var(--font) !important;
+}
