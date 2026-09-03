@@ -1,0 +1,15 @@
+# /etc/systemd/system/ttc-retrain.timer
+# Weekly. The measured drift was ~0.3 min MAE over roughly three months, so weekly is
+# comfortably more often than the model decays — and each run is a few minutes of one
+# core on a box that is otherwise idle at night.
+[Unit]
+Description=Weekly retrain of the TBS Bus arrival-prediction model
+
+[Timer]
+OnCalendar=Sun *-*-* 03:00:00
+# If atlas was off (or the run was missed) fire once it is back, rather than skipping a week.
+Persistent=true
+RandomizedDelaySec=900
+
+[Install]
+WantedBy=timers.target

@@ -52,6 +52,15 @@ RT_BUCKETS = [(-1, 2), (2, 5), (5, 10), (10, 20), (20, 999)]
 # RandomForest-ი მთელ მონაცემზე მეხსიერებას სჭამს (8GB კვანძები); ვსწავლობთ ნიმუშზე.
 RF_SAMPLE = 400_000
 
+# HGB-ის კონფიგურაცია ერთ ადგილას — retrain.py-იც ამასვე იძახებს, რომ განრიგით ავტომატურად
+# გადამზადებული მოდელი ხელით ნატრენინგისგან არ განსხვავდებოდეს.
+HGB_PARAMS = dict(max_iter=300, learning_rate=0.1, max_depth=None, random_state=0)
+
+
+def make_hgb():
+    """საწარმოო მოდელი — ერთადერთი ადგილი, სადაც მისი პარამეტრები განისაზღვრება."""
+    return HistGradientBoostingRegressor(categorical_features=CATEGORICAL, **HGB_PARAMS)
+
 
 def load(path: Path, test_day: str | None):
     df = pd.read_csv(path, dtype={"stop_id": str, "route": str, "pattern": str})
@@ -150,9 +159,7 @@ def main():
         train[c] = train[c].astype("category")
         cats[c] = train[c].cat.categories
         test[c] = pd.Categorical(test[c], categories=cats[c])
-    hgb = HistGradientBoostingRegressor(
-        max_iter=300, learning_rate=0.1, max_depth=None,
-        categorical_features=CATEGORICAL, random_state=0)
+    hgb = make_hgb()
     hgb.fit(train[features], y_train)
     hgb_pred = hgb.predict(test[features])
     evaluate("HistGradientBoosting", y_test, hgb_pred, results)

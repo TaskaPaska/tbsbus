@@ -1,0 +1,27 @@
+# /etc/systemd/system/ttc-retrain.service
+# Rebuild features from recent JSONL and retrain the arrival model.
+# retrain.py promotes the new model only if it beats BOTH the operator baseline and the
+# model currently live, so a bad run is a no-op rather than a regression.
+[Unit]
+Description=TBS Bus — rebuild features and retrain the arrival-prediction model
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=atlas
+Group=atlas
+WorkingDirectory=/home/atlas/tbsbus/services/ml
+ExecStart=/home/atlas/tbsbus/services/ml/.venv/bin/python retrain.py --days 8
+
+# atlas is an 8GB box that also runs the collector and the API. The retrain peaks around
+# 2.5GB (measured), so cap it well above that but far below the box: if it ever regresses
+# into a memory hog, systemd kills the retrain instead of the OOM killer taking the collector.
+MemoryMax=4G
+Nice=10
+IOSchedulingClass=idle
+CPUSchedulingPolicy=batch
+TimeoutStartSec=2h
+
+[Install]
+WantedBy=multi-user.target
