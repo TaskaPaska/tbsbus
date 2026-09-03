@@ -23,9 +23,11 @@ data/processed/
 # Selected/full stop lists are machine-generated; keep local unless deliberately shared
 services/collector/tracked_stops.json
 services/collector/all_stops.json
+services/collector/route_map.json
 
 # Python
 .venv/
+.venv*/
 venv/
 bin/
 lib/

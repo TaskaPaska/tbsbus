@@ -12,7 +12,13 @@ collector → JSONL ──load_to_db──▶ PostgreSQL/PostGIS ──▶ detec
 - `db.py` — კავშირი, სქემის init, JSONL→Postgres ჩატვირთვა, წაკითხვა, arrival_event-ის ჩაწერა.
 - `load_to_db.py` — ETL CLI (JSONL → Postgres). იდემპოტენტური თითო დღისთვის.
 - `detect_arrivals.py` — მოსვლის დაფიქსირება (ML ლეიბლები). `--source jsonl|db`, `--to-db`.
-- `build_features.py` — სასწავლო სტრიქონების აგება. `--source jsonl|db`.
+- `build_features.py` — სასწავლო სტრიქონების აგება. `--source jsonl|db`, სურვილისამებრ
+  `--positions raw/positions/*.jsonl --stops ../collector/tracked_stops.json
+  [--route-map ../collector/route_map.json]` GPS-მანძილის (veh_dist_m/veh_pos_age_s/veh_candidates)
+  feature-ებისთვის — იხ. `positions_features.py`. route_map.json-ს `fetch_route_map.py`
+  (`services/collector/`) აგენერირებს. **ეს GPS-სვეტები კვლევითია** — გაზომვით ჯერ არ მუშაობს
+  (corr(veh_dist_m, label_min) = 0.016), ამიტომ `train.py` მათ ნაგულისხმევად არ იყენებს;
+  მიზეზი დაწვრილებით `positions_features.py`-ის docstring-შია.
 
 ## გაშვება
 
@@ -43,9 +49,15 @@ JSONL-დან პირდაპირ მუშაობა კვლავ �
 
 ## Spark (ფაზა 3) — განაწილებული feature engineering
 
-`spark_features.py` იგივეს აკეთებს, რასაც `build_features.py`, ოღონდ Spark-ით განაწილებულად:
+`spark_features.py` იგივეს აკეთებდა, რასაც `build_features.py`, ოღონდ Spark-ით განაწილებულად:
 Postgres-იდან JDBC-ით კითხულობს (partition-ებად), lane-ებს worker-ებზე ანაწილებს და თითო
-lane-ზე *იმავე* `iter_approaches` ლოგიკას უშვებს (`applyInPandas`). შედეგი ML-ისთვის იდენტურია.
+lane-ზე *იმავე* `iter_approaches` ლოგიკას უშვებდა (`applyInPandas`).
+
+**შენიშვნა (2026-08):** `build_features.py`-ს დაემატა ტრენდი (rt_delta_min/rt_rate/stall_s) და
+GPS-join (veh_dist_m/...) — `spark_features.py` ჯერ არ არის განახლებული ამ ლოგიკით, ასე რომ
+შედეგი აღარაა იდენტური. CLAUDE.md-ის მიხედვით Spark ისედაც გამარტივების კანდიდატია
+(personal-use მასშტაბზე DuckDB/Polars/pandas საკმარისია) — არ ღირს პარალელური ლოგიკის
+შენარჩუნება, სანამ Spark-ის საჭიროება საბოლოოდ არ გადაწყდება.
 
 Spark cluster batch/on-demand-ია — compose-ის `spark` profile-ში:
 
