@@ -1,14 +1,23 @@
 """პროგნოზის ლოგიკა — ML მოდელი + ცოცხალი TTC მონაცემები -> კორექტირებული მოსვლის წუთები.
 
 ეს მოდული Flask-ისგან დამოუკიდებლად ტესტირებადია: `PredictionService` იღებს ერთ ცოცხალ
-arrival-times entry-ს და აბრუნებს მოდელის პროგნოზს. feature-ების აგება ზუსტად იმეორებს
-build_features.py-ის ლოგიკას, რომ train და serve დროს features ერთნაირი იყოს (skew-ის თავიდან
-აცილება) — იგივე სვეტები, იგივე pattern წესი, იგივე UTC+4 ლოკალური დრო.
+arrival-times entry-ს და აბრუნებს მოდელის პროგნოზს. სვეტების სია (NUMERIC/CATEGORICAL) ზუსტად
+უნდა დაემთხვეს train.py-ის SERVING_NUMERIC/CATEGORICAL-ს, თორემ model.predict() ჩაიშლება ან
+უხმაუროდ არასწორად იმუშავებს.
+
+train/serve skew-ის თავიდან აცილება: build_features.py უფრო მეტ სვეტსაც აწარმოებს (ტრენდი —
+rt_delta_min/rt_rate/stall_s, GPS — veh_dist_m/...), მაგრამ მათ readings history და positions
+poll-ები სჭირდება, რაც /predict-ის ერთჯერად live call-ს არა აქვს. ამიტომ ისინი *არც* სწავლების
+კონტრაქტშია (იხ. train.py-ის EXPERIMENTAL_NUMERIC) — ანუ აქ შესავსები placeholder-ებიც აღარაა
+საჭირო. გაზომვით ეს უკეთესიცაა: base-კონტრაქტის მოდელი ცოცხლად 2.00 წთ MAE-ს იძლევა, ტრენდი+GPS-ზე
+დატრენილი კი (ცოცხლად NaN-ებით) — 2.03.
+
+მოდელი პირდაპირ label_min-ს (მოსვლამდე წუთებს) აბრუნებს, არა კორექციას — model.predict()-ის
+გამოსავალი უცვლელად გამოიყენება.
 """
-import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import joblib
 import pandas as pd
@@ -49,8 +58,9 @@ class PredictionService:
 
     def _to_frame(self, rows: List[Dict[str, Any]]) -> pd.DataFrame:
         df = pd.DataFrame(rows, columns=NUMERIC + CATEGORICAL)
-        # მოდელი category dtype-ზე დაიტრენა (HistGradientBoosting native categorical);
-        # ფიტში არნახული მნიშვნელობებს მოდელი თავად ართმევს თავს (unknown -> missing bin).
+        # მოდელი category dtype-ზე დაიტრენა (HistGradientBoosting native categorical); sklearn
+        # კატეგორიებს *მნიშვნელობით* ამთხვევს, არა კოდით, ასე რომ აქ ლოკალური astype უსაფრთხოა და
+        # ფიტში არნახულ მნიშვნელობებს მოდელი თავად მიაქცევს "missing"-ზე.
         for c in CATEGORICAL:
             df[c] = df[c].astype("category")
         return df
@@ -59,7 +69,9 @@ class PredictionService:
         if not rows:
             return []
         preds = self.model.predict(self._to_frame(rows))
-        return [round(float(p), 2) for p in preds]
+        # მოდელი რეგრესიაა და შეიძლება უარყოფითი გამოვიდეს (გაზომვით ~0.9% შემთხვევა, min -2.7წთ) —
+        # "მოსვლამდე -2.7 წუთი" აზრს მოკლებულია, 0-ზე ("ახლავე") ვჭრით.
+        return [round(max(0.0, float(p)), 2) for p in preds]
 
     def predict_stop(self, stop_id: str, payload: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """ცოცხალი arrival-times payload-იდან აბრუნებს per-ავტობუს პროგნოზებს.
